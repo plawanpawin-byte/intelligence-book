@@ -1,0 +1,81 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode 26
+        run: |
+          ls -d /Applications/Xcode*.app
+          XC=$(ls -d /Applications/Xcode_26*.app | grep -vi beta | sort -V | tail -1)
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+
+      - name: Install Metal toolchain (needed by MLX shaders)
+        run: xcodebuild -downloadComponent MetalToolchain || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: SourcePackages
+          key: spm-${{ hashFiles('project.yml') }}
+          restore-keys: spm-
+
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project IntelligenceBook.xcodeproj \
+            -scheme IntelligenceBook \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/IntelligenceBook.xcarchive \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            > build.log 2>&1 || {
+              echo "::group::Errors"; grep -n "error:" build.log | head -150; echo "::endgroup::";
+              tail -120 build.log; exit 1; }
+          tail -5 build.log
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/IntelligenceBook.xcarchive/Products/Applications/IntelligenceBook.app Payload/
+          zip -qry IntelligenceBook-unsigned.ipa Payload
+          ls -lh IntelligenceBook-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IntelligenceBook-unsigned-ipa
+          path: IntelligenceBook-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore

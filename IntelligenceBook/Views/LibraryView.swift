@@ -1,0 +1,136 @@
+import SwiftUI
+import SwiftData
+
+struct LibraryView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Notebook.updatedAt, order: .reverse) private var notebooks: [Notebook]
+    @State private var search = ""
+    @State private var path: [Notebook] = []
+    @State private var renaming: Notebook?
+    @State private var renameText = ""
+
+    private var filtered: [Notebook] {
+        guard !search.isEmpty else { return notebooks }
+        return notebooks.filter { nb in
+            nb.title.localizedCaseInsensitiveContains(search)
+                || nb.notes.contains { $0.title.localizedCaseInsensitiveContains(search) || $0.markdown.localizedCaseInsensitiveContains(search) }
+                || nb.sources.contains { $0.title.localizedCaseInsensitiveContains(search) }
+        }
+    }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                let pinned = filtered.filter(\.isPinned)
+                if !pinned.isEmpty {
+                    Section("ปักหมุด") {
+                        ForEach(pinned) { row($0) }
+                    }
+                }
+                Section(pinned.isEmpty ? "ล่าสุด" : "ทั้งหมด") {
+                    ForEach(filtered.filter { !$0.isPinned }) { row($0) }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("IntelligenceBook")
+            .searchable(text: $search, prompt: "ค้นหาสมุด โน้ต หรือแหล่งข้อมูล")
+            .overlay {
+                if notebooks.isEmpty {
+                    ContentUnavailableView {
+                        Label("ยังไม่มีสมุดโน้ต", systemImage: "books.vertical")
+                    } description: {
+                        Text("สร้างสมุด แล้วโยน PDF ลิงก์ YouTube ข้อความ หรือเสียง ให้ AI สรุปเป็นโน้ต")
+                    } actions: {
+                        Button("สร้างสมุดโน้ต", action: createNotebook)
+                            .buttonStyle(.borderedProminent)
+                    }
+                } else if filtered.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: createNotebook) {
+                        Label("สมุดใหม่", systemImage: "square.and.pencil")
+                    }
+                }
+            }
+            .navigationDestination(for: Notebook.self) { NotebookView(notebook: $0) }
+            .alert("เปลี่ยนชื่อสมุด", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("ชื่อสมุด", text: $renameText)
+                Button("ยกเลิก", role: .cancel) { renaming = nil }
+                Button("บันทึก") {
+                    renaming?.title = renameText.isEmpty ? "สมุดไม่มีชื่อ" : renameText
+                    renaming = nil
+                }
+            }
+        }
+    }
+
+    private func row(_ notebook: Notebook) -> some View {
+        NavigationLink(value: notebook) {
+            NotebookRow(notebook: notebook)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) { delete(notebook) } label: { Label("ลบ", systemImage: "trash") }
+        }
+        .swipeActions(edge: .leading) {
+            Button { notebook.isPinned.toggle() } label: {
+                Label(notebook.isPinned ? "เลิกปักหมุด" : "ปักหมุด", systemImage: notebook.isPinned ? "pin.slash" : "pin")
+            }
+            .tint(.orange)
+        }
+        .contextMenu {
+            Button { notebook.isPinned.toggle() } label: {
+                Label(notebook.isPinned ? "เลิกปักหมุด" : "ปักหมุด", systemImage: notebook.isPinned ? "pin.slash" : "pin")
+            }
+            Button {
+                renameText = notebook.title
+                renaming = notebook
+            } label: { Label("เปลี่ยนชื่อ", systemImage: "pencil") }
+            Divider()
+            Button(role: .destructive) { delete(notebook) } label: { Label("ลบ", systemImage: "trash") }
+        }
+    }
+
+    private func createNotebook() {
+        let notebook = Notebook(title: "สมุดใหม่ \(Date().formatted(date: .abbreviated, time: .omitted))")
+        modelContext.insert(notebook)
+        path.append(notebook)
+    }
+
+    private func delete(_ notebook: Notebook) {
+        notebook.sources.forEach { FileStore.delete($0.fileName) }
+        modelContext.delete(notebook)
+    }
+}
+
+struct NotebookRow: View {
+    let notebook: Notebook
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: notebook.notes.isEmpty ? "book.closed" : "book")
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(notebook.title)
+                    .font(.headline)
+                    .lineLimit(2)
+                Text("\(notebook.sources.count) แหล่งข้อมูล · \(notebook.notes.count) โน้ต · \(notebook.updatedAt.formatted(.relative(presentation: .named)))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if notebook.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("ปักหมุด")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
