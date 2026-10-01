@@ -177,6 +177,9 @@ struct LibraryView: View {
                     Label("โมเดล AI", systemImage: "apple.intelligence")
                     Text(LLMService.displayName)
                 }
+                Section {
+                    Text("เวอร์ชัน \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                }
             } label: {
                 Label("ตัวเลือก", systemImage: "line.3.horizontal.decrease")
             }
