@@ -140,7 +140,7 @@ enum WebExtractor {
         return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
     }
 
-    static func fetch(_ raw: String) async throws -> (title: String, text: String) {
+    static func fetch(_ raw: String) async throws -> (title: String, text: String, image: String?) {
         guard let url = normalize(raw) else { throw AppError.message("ลิงก์ไม่ถูกต้อง") }
         let html = try await fetchHTML(url)
 
@@ -156,13 +156,22 @@ enum WebExtractor {
         var text = HTMLText.plainText(fromHTML: body)
         if text.count < 200 { text = HTMLText.plainText(fromHTML: html) }
         guard text.count > 40 else { throw AppError.message("ดึงเนื้อหาจากหน้านี้ไม่ได้ (อาจเป็นหน้าที่ต้องใช้ JavaScript)") }
-        return (HTMLText.decodeEntities(title).trimmingCharacters(in: .whitespacesAndNewlines), text)
+        let image = (HTMLText.firstMatch(html, "<meta[^>]+property=\"og:image(?::url)?\"[^>]+content=\"([^\"]+)\"")
+            ?? HTMLText.firstMatch(html, "<meta[^>]+content=\"([^\"]+)\"[^>]+property=\"og:image\"")
+            ?? HTMLText.firstMatch(html, "<meta[^>]+name=\"twitter:image\"[^>]+content=\"([^\"]+)\""))
+            .map(HTMLText.decodeEntities)
+            .flatMap { URL(string: $0, relativeTo: url)?.absoluteString }
+        return (HTMLText.decodeEntities(title).trimmingCharacters(in: .whitespacesAndNewlines), text, image)
     }
 }
 
 // MARK: - YouTube
 
 enum YouTubeTranscript {
+    static func thumbnailURL(for raw: String) -> String? {
+        videoID(from: raw).map { "https://i.ytimg.com/vi/\($0)/hqdefault.jpg" }
+    }
+
     static func videoID(from raw: String) -> String? {
         guard let url = WebExtractor.normalize(raw), let host = url.host?.lowercased() else { return nil }
         if host.contains("youtu.be") {

@@ -45,9 +45,11 @@ final class SourceProcessor {
                 let result = try await WebExtractor.fetch(source.urlString ?? "")
                 source.text = result.text
                 if !result.title.isEmpty { source.title = result.title }
+                source.imageURL = result.image
 
             case .youtube:
                 source.detail = "กำลังดึงคำบรรยาย"
+                source.imageURL = YouTubeTranscript.thumbnailURL(for: source.urlString ?? "")
                 let result = try await YouTubeTranscript.fetch(source.urlString ?? "")
                 source.text = result.text
                 source.title = result.title

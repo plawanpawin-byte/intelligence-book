@@ -95,6 +95,8 @@ final class Source {
     var detail: String?
     var urlString: String?
     var fileName: String?
+    /// Cover image for the library card (YouTube thumbnail, web og:image).
+    var imageURL: String?
     var notebook: Notebook?
 
     init(kind: SourceKind, title: String, text: String = "", urlString: String? = nil, fileName: String? = nil) {

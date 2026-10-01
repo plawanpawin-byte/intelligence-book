@@ -2,7 +2,7 @@
 
 แอป iOS แนว NotebookLM: โยน **PDF · ลิงก์เว็บ · YouTube · ข้อความ · ไฟล์เสียง · อัดเสียงสด** แล้วให้ **Llama 3.2 ที่รันบนเครื่อง** สรุปเป็นโน้ตที่อ่านง่าย มีไฮไลท์ กล่องสี (callout) โค้ด และตาราง จากนั้นถามว่าจะแชร์ไปไหน — Obsidian, Canva, Notes หรือแผ่นแชร์ของ iOS
 
-UI เป็น SwiftUI แบบ Apple native (หน้าเดียวแบบแอป Notes: ค้นหา + ปุ่มสร้างใน dock ล่าง, NavigationStack, List/Form, sheets, share sheet, SF Symbols, semantic colors, Dynamic Type, Light/Dark)
+UI เป็น SwiftUI แบบ Apple native (หน้าแรกเป็นการ์ด 2 คอลัมน์แบบ Apple Notes gallery พร้อมรูปปก, ปุ่มค้นหาและปุ่มสร้างแบบ Liquid Glass ลอยด้านล่าง, เมนู ≡ มุมขวาบน: ปักหมุด / ลบ / เลือกโมเดล, NavigationStack, List/Form, sheets, share sheet, SF Symbols, semantic colors, Dynamic Type, Light/Dark)
 
 ## ฟีเจอร์
 
@@ -13,7 +13,7 @@ UI เป็น SwiftUI แบบ Apple native (หน้าเดียวแ�
 | YouTube | ดึงคำบรรยาย (ไทย → อังกฤษ) พร้อม timestamp |
 | ข้อความ | วางได้เลย |
 | ไฟล์เสียง / อัดสด | AVAudioRecorder + Speech framework ถอดเสียงทีละ 50 วินาที (ยาวเท่าไหร่ก็ได้) |
-| AI | Llama 3.2 ผ่าน MLX Swift — **เลือก 1B/3B อัตโนมัติตามแรมเครื่อง** (≥ 8 GB → 3B) เปลี่ยนเองได้ในตั้งค่า |
+| AI | Llama 3.2 ผ่าน MLX Swift — **เลือก 1B/3B อัตโนมัติตามแรมเครื่อง** (≥ 8 GB → 3B) เปลี่ยนเองได้จากเมนู ≡ (อัตโนมัติ / 1B / 3B) |
 | เอกสารยาว | map → reduce: ย่อทีละช่วงให้พอดี context แล้วค่อยเขียนโน้ตฉบับเต็ม |
 | รูปแบบโน้ต | สรุปใจความ · คู่มืออ่านทบทวน · โครงร่าง · คำถามทบทวน |
 | แชร์ | Obsidian (`obsidian://new` + Markdown/callout), PDF สีสำหรับ Canva/Notes, Markdown, ข้อความ |
@@ -22,7 +22,7 @@ UI เป็น SwiftUI แบบ Apple native (หน้าเดียวแ�
 
 ```markdown
 # หัวเรื่อง
-> [!summary] สรุปสั้น        ← เหลือง (สีหลักของแอป)
+> [!summary] สรุปสั้น        ← เหลือง
 > ...
 - ประเด็นที่มี ==ไฮไลท์== และ **คำสำคัญ**
 > [!definition] คำศัพท์      ← เขียวอมฟ้า
@@ -54,7 +54,7 @@ IntelligenceBook/
   Ingestion/   PDF/OCR, เว็บ, YouTube, Speech, SourceProcessor
   Recording/   อัดเสียง + เล่นเสียง
   Notes/       parser + ตัวเรนเดอร์สี/ไฮไลท์ + export (MD/PDF/ข้อความ/Obsidian)
-  Views/       Library, Create, Notebook, Generate, Note, Share, Settings
+  Views/       Library (masonry cards), Notebook, Generate, Note, Share, SourceImport
 ```
 
 สเปกฉบับเต็มอยู่ใน Obsidian vault “intelligence book”

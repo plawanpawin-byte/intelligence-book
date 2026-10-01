@@ -105,10 +105,9 @@ struct NotebookView: View {
             } label: {
                 Label("สร้างโน้ตด้วย AI", systemImage: "sparkles")
                     .font(.headline)
-                    .foregroundStyle(hasReadySource ? Color.black : Color.secondary)
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .glassProminentButton()
             .controlSize(.large)
             .disabled(!hasReadySource)
 
@@ -121,7 +120,30 @@ struct NotebookView: View {
         .padding(.horizontal)
         .padding(.top, 8)
         .padding(.bottom, 4)
-        .background(.bar)
+        .modifier(BarBackground())
+    }
+}
+
+/// Liquid Glass on iOS 26, a regular bordered-prominent button before.
+extension View {
+    @ViewBuilder
+    func glassProminentButton() -> some View {
+        if #available(iOS 26.0, *) {
+            buttonStyle(.glass)
+        } else {
+            buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+/// iOS 26 floats glass controls straight over content; older systems need a bar material.
+private struct BarBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.background(.bar)
+        }
     }
 }
 
