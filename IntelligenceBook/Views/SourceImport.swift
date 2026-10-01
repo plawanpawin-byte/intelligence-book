@@ -21,28 +21,22 @@ private struct SourceImportModifier: ViewModifier {
 
     @State private var importError: String?
 
-    private var fileKind: SourceKind? {
-        request == .pdf || request == .audio ? request : nil
-    }
-
     private var sheetKind: Binding<SourceKind?> {
         Binding(
-            get: { [.web, .youtube, .text, .recording].contains(request) ? request : nil },
+            get: { request },
             set: { if $0 == nil { request = nil } }
         )
     }
 
     func body(content: Content) -> some View {
         content
-            .fileImporter(
-                isPresented: Binding(get: { fileKind != nil }, set: { if !$0 { request = nil } }),
-                allowedContentTypes: fileKind == .audio ? [.audio, .mpeg4Audio, .mp3, .wav] : [.pdf],
-                allowsMultipleSelection: true
-            ) { result in
-                handleFiles(result)
-            }
             .sheet(item: sheetKind) { kind in
                 switch kind {
+                case .pdf, .audio:
+                    DocumentPicker(types: kind == .audio ? [.audio, .mpeg4Audio, .mp3, .wav] : [.pdf]) { urls in
+                        handleFiles(.success(urls))
+                    }
+                    .ignoresSafeArea()
                 case .web, .youtube:
                     LinkEntrySheet(kind: kind) { link in
                         add(Source(kind: kind, title: link, urlString: link))
@@ -56,8 +50,6 @@ private struct SourceImportModifier: ViewModifier {
                         let title = "บันทึกเสียง \(Date().formatted(date: .abbreviated, time: .shortened)) (\(duration.clockString))"
                         add(Source(kind: .recording, title: title, text: transcript ?? "", fileName: fileName))
                     }
-                default:
-                    EmptyView()
                 }
             }
             .alert("นำเข้าไม่สำเร็จ", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
@@ -100,6 +92,35 @@ private struct SourceImportModifier: ViewModifier {
     }
 }
 
+// MARK: - Document picker
+
+/// UIDocumentPicker in copy mode: iOS downloads the file from iCloud / Drive / other providers and hands
+/// over a local copy, which avoids NSFileProviderErrorDomain errors from not-yet-downloaded files.
+struct DocumentPicker: UIViewControllerRepresentable {
+    let types: [UTType]
+    let onPick: ([URL]) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        picker.allowsMultipleSelection = true
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: ([URL]) -> Void
+        init(onPick: @escaping ([URL]) -> Void) { self.onPick = onPick }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onPick(urls)
+        }
+    }
+}
+
 // MARK: - Link entry
 
 struct LinkEntrySheet: View {
@@ -130,9 +151,12 @@ struct LinkEntrySheet: View {
                         if let first = strings.first { link = first.trimmingCharacters(in: .whitespacesAndNewlines) }
                     }
                 } footer: {
-                    Text(kind == .youtube
-                         ? "ใช้คำบรรยายของวิดีโอ (ไทยหรืออังกฤษ) ถ้าวิดีโอไม่มีคำบรรยาย ให้คัดลอก transcript มาวางเป็นข้อความแทน"
-                         : "ดึงเฉพาะเนื้อหาที่อ่านได้จากหน้าเว็บ หน้าที่ต้องล็อกอินหรือมี paywall อาจดึงไม่ได้")
+                    if kind == .web {
+                        Text("ดึงเฉพาะเนื้อหาที่อ่านได้จากหน้าเว็บ หน้าที่ต้องล็อกอินหรือมี paywall อาจดึงไม่ได้")
+                    }
+                }
+                if kind == .youtube {
+                    GeminiKeySection()
                 }
             }
             .navigationTitle(kind.addLabel)
@@ -143,13 +167,51 @@ struct LinkEntrySheet: View {
             }
             .onAppear { focused = true }
         }
-        .presentationDetents([.medium])
+        .presentationDetents(kind == .youtube ? [.large] : [.medium])
     }
 
     private func submit() {
         guard isValid else { return }
         onAdd(link.trimmingCharacters(in: .whitespacesAndNewlines))
         dismiss()
+    }
+}
+
+// MARK: - Gemini key
+
+/// Lets the user paste a Gemini API key; YouTube links are then transcribed by Gemini.
+struct GeminiKeySection: View {
+    @State private var hasKey = GeminiKey.isSet
+    @State private var draft = ""
+
+    var body: some View {
+        Section {
+            if hasKey {
+                Label("ใช้ Gemini ถอดคำพูดจาก YouTube", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Button("ลบ API key", role: .destructive) {
+                    GeminiKey.remove()
+                    hasKey = false
+                }
+            } else {
+                SecureField("วาง Gemini API key", text: $draft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("บันทึก key") {
+                    GeminiKey.save(draft)
+                    draft = ""
+                    hasKey = GeminiKey.isSet
+                }
+                .disabled(draft.trimmingCharacters(in: .whitespaces).count < 20)
+                Link(destination: URL(string: "https://aistudio.google.com/apikey")!) {
+                    Label("รับ API key ฟรีจาก Google AI Studio", systemImage: "key")
+                }
+            }
+        } header: {
+            Text("Gemini (ถอดคำพูดจาก YouTube)")
+        } footer: {
+            Text("YouTube ไม่ส่งคำบรรยายให้แอปโดยตรงแล้ว แอปจึงส่งลิงก์วิดีโอให้ Google Gemini ถอดคำพูดแทน (ส่งเฉพาะลิงก์ ไม่ส่งข้อมูลอื่น) จากนั้นสรุปโน้ตด้วยโมเดลในเครื่องตามเดิม key เก็บไว้ใน Keychain ของเครื่อง")
+        }
     }
 }
 
@@ -211,6 +273,7 @@ struct RecorderSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var recorder = AudioRecorder()
     @State private var finishing = false
+    @AppStorage(SpeechLocale.storageKey) private var speechLocale = SpeechLocale.thai.rawValue
     @State private var permissionDenied = false
     @State private var errorText: String?
 
@@ -252,7 +315,19 @@ struct RecorderSheet: View {
                         if recorder.state == .idle { start() } else { finish() }
                     }
 
-                    Color.clear.frame(width: 56, height: 56)
+                    Menu {
+                        Picker("ภาษาที่พูด", selection: $speechLocale) {
+                            ForEach(SpeechLocale.allCases) { Text($0.label).tag($0.rawValue) }
+                        }
+                    } label: {
+                        Text(SpeechLocale(rawValue: speechLocale)?.shortLabel ?? "ไทย")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 56, height: 56)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .disabled(recorder.state != .idle)
+                    .accessibilityLabel("ภาษาที่พูด")
                 }
                 .padding(.bottom, 32)
             }

@@ -50,11 +50,24 @@ final class SourceProcessor {
                 source.imageURL = result.image
 
             case .youtube:
-                source.detail = "กำลังดึงคำบรรยาย"
                 source.imageURL = YouTubeTranscript.thumbnailURL(for: source.urlString ?? "")
-                let result = try await YouTubeTranscript.fetch(source.urlString ?? "")
-                source.text = result.text
-                source.title = result.title
+                guard let id = YouTubeTranscript.videoID(from: source.urlString ?? "") else {
+                    throw AppError.message("ไม่พบรหัสวิดีโอ YouTube ในลิงก์นี้")
+                }
+                if let title = await GeminiYouTube.title(videoID: id) { source.title = title }
+                if let key = GeminiKey.value {
+                    source.detail = "Gemini กำลังถอดคำพูดจากวิดีโอ…"
+                    source.text = try await GeminiYouTube.transcript(videoID: id, key: key)
+                } else {
+                    source.detail = "กำลังดึงคำบรรยาย"
+                    do {
+                        let result = try await YouTubeTranscript.fetch(source.urlString ?? "")
+                        source.text = result.text
+                        if !result.title.isEmpty { source.title = result.title }
+                    } catch {
+                        throw AppError.message("YouTube ไม่ส่งคำบรรยายให้แอปโดยตรง — ใส่ Gemini API key ในหน้าเพิ่มลิงก์ YouTube แล้วลองใหม่ (แตะแหล่งข้อมูลนี้ > ลองอีกครั้ง)")
+                    }
+                }
 
             case .text:
                 break

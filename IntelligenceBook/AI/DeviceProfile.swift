@@ -57,8 +57,8 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
 
     var maxOutputTokens: Int {
         switch self {
-        case .b1: 1_200
-        case .b3: 1_500
+        case .b1: 1_500
+        case .b3: 2_200
         }
     }
 }

@@ -211,7 +211,15 @@ enum FileStore {
         let name = "\(UUID().uuidString.prefix(8))-\(source.lastPathComponent)"
         let dest = FileStore.url(for: name)
         if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
-        try FileManager.default.copyItem(at: source, to: dest)
+        // Coordinated read makes file providers (iCloud Drive, Google Drive…) deliver the real file first.
+        var coordinationError: NSError?
+        var copyError: Error?
+        NSFileCoordinator().coordinate(readingItemAt: source, options: [.withoutChanges], error: &coordinationError) { readable in
+            do { try FileManager.default.copyItem(at: readable, to: dest) } catch { copyError = error }
+        }
+        if let error = coordinationError ?? copyError {
+            throw AppError.message("เปิดไฟล์ไม่ได้ — ถ้าไฟล์อยู่ใน iCloud/Drive ให้ดาวน์โหลดลงเครื่องก่อน (\(error.localizedDescription))")
+        }
         return name
     }
 

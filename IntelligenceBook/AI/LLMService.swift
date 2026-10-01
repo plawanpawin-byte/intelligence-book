@@ -101,43 +101,93 @@ final class LLMService {
 
     /// One-shot generation in a fresh context. `onUpdate` receives the full text so far.
     /// Stops early when the model starts looping (small models repeat the same line forever).
+    /// With `continueIfCut`, a note that hits the token limit mid-sentence is continued (up to twice)
+    /// instead of ending abruptly.
     func generate(
         system: String,
         prompt: String,
         maxTokens: Int,
         temperature: Float = 0.4,
+        continueIfCut: Bool = false,
         onUpdate: ((String) -> Void)? = nil
     ) async throws -> String {
+        var (text, cut) = try await stream(system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, prefix: "", onUpdate: onUpdate)
+        var passes = 0
+        while cut && continueIfCut && passes < 2 {
+            passes += 1
+            let continuation = """
+            \(prompt)
+
+            ---
+            THE NOTE WRITTEN SO FAR (it was cut off because of length):
+            \(text)
+            ---
+            Continue the note from exactly where it stops. Do not repeat anything already written. \
+            Output only the continuation text.
+            """
+            let joiner = text.hasSuffix("\n") ? "" : (text.last?.isWhitespace == true ? "" : " ")
+            let (more, stillCut) = try await stream(
+                system: system, prompt: continuation, maxTokens: maxTokens, temperature: temperature,
+                prefix: text + joiner, onUpdate: onUpdate
+            )
+            text += joiner + more
+            cut = stillCut
+        }
+        Memory.clearCache()
+        return RepetitionGuard.clean(text).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Streams one reply. Returns the text and whether it stopped because of the token limit.
+    private func stream(
+        system: String,
+        prompt: String,
+        maxTokens: Int,
+        temperature: Float,
+        prefix: String,
+        onUpdate: ((String) -> Void)?
+    ) async throws -> (String, Bool) {
         let model = try await ensureLoaded()
 
         var parameters = GenerateParameters()
         parameters.maxTokens = maxTokens
         parameters.temperature = temperature
         parameters.topP = 0.9
-        parameters.repetitionPenalty = 1.15
-        parameters.repetitionContextSize = 128
+        parameters.repetitionPenalty = 1.1
+        parameters.repetitionContextSize = 96
 
         let session = ChatSession(model, instructions: system, generateParameters: parameters)
         var text = ""
         var lastCheck = 0
-        for try await chunk in session.streamResponse(to: prompt) {
+        var hitLimit = false
+        for try await event in session.streamDetails(to: prompt) {
             try Task.checkCancellation()
-            text += chunk
-            onUpdate?(text)
-            if text.count - lastCheck > 40 {
-                lastCheck = text.count
-                if RepetitionGuard.isLooping(text) { break }
+            switch event {
+            case .chunk(let chunk):
+                text += chunk
+                onUpdate?(prefix + text)
+                if text.count - lastCheck > 40 {
+                    lastCheck = text.count
+                    if RepetitionGuard.isLooping(text) { return (text, false) }
+                }
+            case .info(let info):
+                hitLimit = info.stopReason == .length
+            default:
+                break
             }
         }
-        Memory.clearCache()
-        return RepetitionGuard.clean(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (text, hitLimit)
     }
 }
 
 /// Detects and removes the "same line again and again" failure of small models.
 enum RepetitionGuard {
     private static func key(_ line: String) -> String {
-        line.lowercased().filter { !$0.isWhitespace && !"-*>#=•".contains($0) }
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        // Headings, callout headers and table rows legitimately repeat ("> [!tip] ประเด็นสำคัญ").
+        if trimmed.hasPrefix("#") || trimmed.hasPrefix("> [!") || trimmed.hasPrefix("|") || trimmed.hasPrefix("```") {
+            return ""
+        }
+        return line.lowercased().filter { !$0.isWhitespace && !"-*>#=•".contains($0) }
     }
 
     /// True when a non-trivial line has already appeared 3+ times, or the tail repeats itself.
@@ -145,14 +195,14 @@ enum RepetitionGuard {
         var counts: [String: Int] = [:]
         for line in text.components(separatedBy: "\n") {
             let k = key(line)
-            guard k.count >= 8 else { continue }
+            guard k.count >= 16 else { continue }
             counts[k, default: 0] += 1
             if counts[k]! >= 3 { return true }
         }
         // A phrase repeating inside one long line ("A เพราะ B A เพราะ B A เพราะ B").
-        let tail = String(text.suffix(240))
-        if tail.count == 240 {
-            for size in stride(from: 12, through: 80, by: 4) {
+        let tail = String(text.suffix(300))
+        if tail.count == 300 {
+            for size in stride(from: 20, through: 100, by: 1) {
                 let unit = String(tail.suffix(size))
                 if tail.hasSuffix(String(repeating: unit, count: 3)) { return true }
             }
@@ -166,7 +216,7 @@ enum RepetitionGuard {
         var out: [String] = []
         for line in text.components(separatedBy: "\n") {
             let k = key(line)
-            if k.count >= 8 {
+            if k.count >= 16 {
                 if seen.contains(k) { continue }
                 seen.insert(k)
             }

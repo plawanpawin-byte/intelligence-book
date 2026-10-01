@@ -21,15 +21,23 @@ enum SpeechLocale: String, CaseIterable, Identifiable {
         }
     }
 
-    static let storageKey = "speechLocale"
+    var shortLabel: String {
+        switch self {
+        case .thai: "ไทย"
+        case .english: "EN"
+        case .englishUK: "UK"
+        case .japanese: "日本"
+        case .chinese: "中文"
+        }
+    }
+
+    /// v2 key: the old default followed the iPhone language (English UI → Thai speech became gibberish).
+    static let storageKey = "speechLocale.v2"
+    /// Thai unless the user picked another language on the recording screen.
     static var current: SpeechLocale {
         if let saved = UserDefaults.standard.string(forKey: storageKey), let locale = SpeechLocale(rawValue: saved) {
             return locale
         }
-        let language = Locale.preferredLanguages.first ?? "th"
-        if language.hasPrefix("en") { return .english }
-        if language.hasPrefix("ja") { return .japanese }
-        if language.hasPrefix("zh") { return .chinese }
         return .thai
     }
 }

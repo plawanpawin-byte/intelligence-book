@@ -193,7 +193,8 @@ final class GenerationJob {
                 SOURCE:
                 \(material)
                 """,
-                maxTokens: maxTokens
+                maxTokens: maxTokens,
+                continueIfCut: true
             ) { [weak self] partial in
                 self?.output = partial
             }

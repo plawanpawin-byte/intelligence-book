@@ -217,6 +217,10 @@ struct SourceDetailView: View {
                 }
             }
 
+            if source.kind == .youtube, source.status == .failed {
+                GeminiKeySection()
+            }
+
             if (source.kind == .audio || source.kind == .recording), source.fileURL != nil {
                 Section("เสียง") {
                     PlayerControls(player: player)
