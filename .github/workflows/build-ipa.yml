@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: ipa-${{ github.ref }}
   cancel-in-progress: true
@@ -79,3 +82,15 @@ jobs:
           name: build-log
           path: build.log
           if-no-files-found: ignore
+
+      - name: Publish build errors to ci-logs branch
+        if: failure()
+        run: |
+          mkdir -p /tmp/ci && cd /tmp/ci
+          git init -q && git checkout -q -b ci-logs
+          { echo "run: ${{ github.run_id }} sha: ${{ github.sha }}"; echo; \
+            grep -n -E "error:|fatal error|Error:|failed" "$GITHUB_WORKSPACE/build.log" | head -300; echo; echo "----- tail -----"; \
+            tail -150 "$GITHUB_WORKSPACE/build.log"; } > errors.txt 2>/dev/null || echo "no build.log" > errors.txt
+          git add errors.txt
+          git -c user.name=ci -c user.email=ci@example.com commit -qm "build errors ${{ github.run_id }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-logs
