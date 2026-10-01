@@ -7,8 +7,8 @@ enum OutputLanguage: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .auto: "ตามภาษาของแหล่งข้อมูล"
-        case .thai: "ภาษาไทย"
+        case .auto: "Same as source"
+        case .thai: "Thai"
         case .english: "English"
         }
     }
@@ -16,7 +16,7 @@ enum OutputLanguage: String, CaseIterable, Identifiable {
     var instruction: String {
         switch self {
         case .auto: "Write the note in the same language as the source material (if it is Thai, write in Thai)."
-        case .thai: "เขียนโน้ตทั้งหมดเป็นภาษาไทย (คำศัพท์เทคนิคเก็บภาษาอังกฤษไว้ในวงเล็บได้)"
+        case .thai: "Write the whole note in Thai (technical terms may keep the English word in parentheses)."
         case .english: "Write the whole note in English."
         }
     }
@@ -28,7 +28,7 @@ enum Prompts {
     FORMAT RULES (Obsidian-flavoured Markdown, the app renders colours from it):
     - Start with "# " and a short, specific title.
     - Right after the title add a summary callout:
-      > [!summary] สรุปสั้น
+      > [!summary] Summary
       > 2–3 sentences with the core idea.
     - Use "## " for main sections and "### " for sub-sections.
     - Use bullet lists ("- ") for points. Keep each bullet short.
@@ -37,9 +37,9 @@ enum Prompts {
     - Put key terms in a definition callout:
       > [!definition] Term
       > Short explanation.
-    - Put important insights in:  > [!tip] หัวข้อ
-    - Put warnings, caveats or uncertainty in:  > [!warning] หัวข้อ
-    - Put review questions in:  > [!question] คำถามทบทวน
+    - Put important insights in:  > [!tip] Title
+    - Put warnings, caveats or uncertainty in:  > [!warning] Title
+    - Put review questions in:  > [!question] Review questions
     - Put code, formulas or commands in fenced code blocks with a language, e.g. ```python
     - Use "- [ ] " for action items.
     - Use a Markdown table only when comparing things.
@@ -56,7 +56,7 @@ enum Prompts {
 
         FAITHFULNESS (most important):
         - Summarise ONLY what is written or said inside <content> … </content>.
-        - The source name and type (e.g. "อัดเสียง", "PDF", "YouTube") are labels, NOT content. \
+        - The source name and type (e.g. "Recording", "PDF", "Web link") are labels, NOT content. \
         Never write about what a recording, file or link is.
         - Timestamps like [00:12] only mark time; ignore them.
         - Speech transcripts can contain small recognition errors; keep the speaker's meaning.
@@ -70,14 +70,14 @@ enum Prompts {
         switch style {
         case .summary:
             return """
-            Create a SUMMARY note: title, summary callout, "## ประเด็นสำคัญ" (key takeaways as bullets with highlights), \
+            Create a SUMMARY note: title, summary callout, "## Key points" (key takeaways as bullets with highlights), \
             1–4 sections that group the main ideas, definition callouts for key terms, and a short question callout at the end.
             """
         case .studyGuide:
             return """
             Create a STUDY GUIDE: title, summary callout, sections explaining each concept in more depth with examples, \
             definition callouts for every important term, tip callouts for things worth remembering, code blocks for any code \
-            or formulas, and a final "## คำถามทบทวน" section with 5 questions and short answers.
+            or formulas, and a final "## Review questions" section with 5 questions and short answers.
             """
         case .outline:
             return """
@@ -87,9 +87,9 @@ enum Prompts {
         case .questions:
             return """
             Create a REVIEW QUESTIONS note: title, summary callout, then 8–12 questions. Format each one as:
-            > [!question] คำถามที่ N
+            > [!question] Question N
             > the question
-            followed by a line "**คำตอบ:** short answer". Mix recall, understanding and application questions.
+            followed by a line "**Answer:** short answer". Mix recall, understanding and application questions.
             """
         }
     }
@@ -138,13 +138,13 @@ final class GenerationJob {
 
     var phaseText: String {
         switch phase {
-        case .preparing: return "กำลังเตรียมแหล่งข้อมูล"
+        case .preparing: return "Preparing sources"
         case .loadingModel: return LLMService.shared.statusText
         case .reading(let i, let n):
-            if let remaining, remaining > 60 { return "กำลังอ่านส่วนที่ \(i) จาก \(n) · เหลืออีกราว \(Int(remaining / 60) + 1) นาที" }
-            return "กำลังอ่านส่วนที่ \(i) จาก \(n)"
-        case .writing: return "กำลังเขียนโน้ต"
-        case .done: return "เสร็จแล้ว"
+            if let remaining, remaining > 60 { return "Reading part \(i) of \(n) · about \(Int(remaining / 60) + 1) min left" }
+            return "Reading part \(i) of \(n)"
+        case .writing: return "Writing note"
+        case .done: return "Done"
         case .failed(let m): return m
         }
     }
@@ -202,7 +202,7 @@ final class GenerationJob {
             progress = 1
             phase = .done
         } catch is CancellationError {
-            phase = .failed("ยกเลิกแล้ว")
+            phase = .failed("Cancelled")
         } catch {
             phase = .failed(error.localizedDescription)
         }
@@ -210,7 +210,7 @@ final class GenerationJob {
 
     /// Source label outside the content tags so the model doesn't summarise the label itself.
     static func wrap(_ source: SourceInput, index: Int) -> String {
-        "[แหล่งที่ \(index + 1) · ชื่อ: \(source.title)]\n<content>\n\(source.text)\n</content>"
+        "[Source \(index + 1) · name: \(source.title)]\n<content>\n\(source.text)\n</content>"
     }
 
     /// Map step: compress each chunk into bullets, repeated until everything fits the budget.
@@ -248,7 +248,7 @@ final class GenerationJob {
             ) { [weak self] partial in
                 self?.output = partial
             }
-            digest.append("ส่วนที่ \(index + 1):\n\(bullets)")
+            digest.append("Part \(index + 1):\n\(bullets)")
         }
         remaining = nil
 

@@ -71,7 +71,7 @@ struct NoteBlockView: View {
                     .foregroundStyle(done ? .secondary : .primary)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityValue(done ? "เสร็จแล้ว" : "ยังไม่เสร็จ")
+            .accessibilityValue(done ? "Done" : "Not done")
 
         case .quote(let text):
             HStack(alignment: .top, spacing: 12) {

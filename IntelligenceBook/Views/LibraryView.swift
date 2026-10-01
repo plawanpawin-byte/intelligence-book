@@ -40,7 +40,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack(path: $path) {
             content
-                .navigationTitle("โน้ต")
+                .navigationTitle("Notes")
                 .navigationBarTitleDisplayMode(.inline)
                 .hideNavigationTitle()
                 .toolbar {
@@ -57,25 +57,25 @@ struct LibraryView: View {
                     }
                     pendingNotebook = nil
                 }
-                .alert("เปลี่ยนชื่อ", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-                    TextField("ชื่อโน้ต", text: $renameText)
-                    Button("ยกเลิก", role: .cancel) { renaming = nil }
-                    Button("บันทึก") {
-                        renaming?.title = renameText.isEmpty ? "ไม่มีชื่อ" : renameText
+                .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                    TextField("Name", text: $renameText)
+                    Button("Cancel", role: .cancel) { renaming = nil }
+                    Button("Save") {
+                        renaming?.title = renameText.isEmpty ? "Untitled" : renameText
                         renaming = nil
                     }
                 }
                 .confirmationDialog(
-                    "ลบ \(selection.count) โน้ต?",
+                    "Delete \(selection.count) notes?",
                     isPresented: $confirmDelete,
                     titleVisibility: .visible
                 ) {
-                    Button("ลบ", role: .destructive) {
+                    Button("Delete", role: .destructive) {
                         for notebook in selectedNotebooks { delete(notebook) }
                         endSelection()
                     }
                 } message: {
-                    Text("โน้ตและแหล่งข้อมูลจะถูกลบออกจากเครื่อง")
+                    Text("The notes and their sources will be removed from this device.")
                 }
         }
     }
@@ -96,9 +96,9 @@ struct LibraryView: View {
         .overlay {
             if notebooks.isEmpty {
                 ContentUnavailableView {
-                    Label("ยังไม่มีโน้ต", systemImage: "square.and.pencil")
+                    Label("No notes yet", systemImage: "square.and.pencil")
                 } description: {
-                    Text("แตะปุ่ม \(Image(systemName: "square.and.pencil")) เพื่อโยน PDF ลิงก์ YouTube ข้อความ หรือเสียง ให้ AI สรุปเป็นโน้ต")
+                    Text("Tap \(Image(systemName: "square.and.pencil")) to add a PDF, web link, text or audio, and the AI turns it into a note.")
                 }
             } else if filtered.isEmpty {
                 ContentUnavailableView.search(text: search)
@@ -132,14 +132,14 @@ struct LibraryView: View {
         .buttonStyle(CardPressStyle())
         .contextMenu {
             Button { notebook.isPinned.toggle() } label: {
-                Label(notebook.isPinned ? "เลิกปักหมุด" : "ปักหมุด", systemImage: notebook.isPinned ? "pin.slash" : "pin")
+                Label(notebook.isPinned ? "Unpin" : "Pin", systemImage: notebook.isPinned ? "pin.slash" : "pin")
             }
             Button {
                 renameText = notebook.title
                 renaming = notebook
-            } label: { Label("เปลี่ยนชื่อ", systemImage: "pencil") }
+            } label: { Label("Rename", systemImage: "pencil") }
             Divider()
-            Button(role: .destructive) { delete(notebook) } label: { Label("ลบ", systemImage: "trash") }
+            Button(role: .destructive) { delete(notebook) } label: { Label("Delete", systemImage: "trash") }
         }
         .animation(.snappy, value: selectAction != nil)
         .animation(.snappy, value: isSelected)
@@ -151,32 +151,32 @@ struct LibraryView: View {
     @ViewBuilder
     private var topMenu: some View {
         if selectAction != nil {
-            Button("เสร็จ", action: endSelection)
+            Button("Done", action: endSelection)
                 .fontWeight(.semibold)
         } else {
             Menu {
-                Button { beginSelection(.pin) } label: { Label("ปักหมุดโน้ต", systemImage: "pin") }
+                Button { beginSelection(.pin) } label: { Label("Pin notes", systemImage: "pin") }
                     .disabled(notebooks.isEmpty)
-                Button(role: .destructive) { beginSelection(.delete) } label: { Label("ลบโน้ต", systemImage: "trash") }
+                Button(role: .destructive) { beginSelection(.delete) } label: { Label("Delete notes", systemImage: "trash") }
                     .disabled(notebooks.isEmpty)
                 Menu {
                     Section(DeviceProfile.isDownloaded(DeviceProfile.selected)
-                            ? "ดาวน์โหลดแล้ว · ประมวลผลบนเครื่อง"
-                            : "จะดาวน์โหลด \(DeviceProfile.selected.downloadSize) ตอนสร้างโน้ตครั้งแรก") {
+                            ? "Downloaded · runs on device"
+                            : "Downloads \(DeviceProfile.selected.downloadSize) when you create your first note") {
                         Button {} label: {
                             Label(DeviceProfile.selected.displayName, systemImage: "checkmark")
                         }
                         .disabled(true)
                     }
                 } label: {
-                    Label("โมเดล AI", systemImage: "cpu")
+                    Label("AI model", systemImage: "cpu")
                     Text(DeviceProfile.selected.displayName)
                 }
                 Section {
-                    Text("เวอร์ชัน \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                    Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
                 }
             } label: {
-                Label("ตัวเลือก", systemImage: "line.3.horizontal.decrease")
+                Label("Options", systemImage: "line.3.horizontal.decrease")
             }
         }
     }
@@ -191,12 +191,12 @@ struct LibraryView: View {
                 withAnimation(.snappy) { selectedNotebooks.forEach { $0.isPinned = !allPinned } }
                 endSelection()
             } label: {
-                Label(allPinned ? "เลิกปักหมุด" : "ปักหมุด", systemImage: allPinned ? "pin.slash" : "pin")
+                Label(allPinned ? "Unpin" : "Pin", systemImage: allPinned ? "pin.slash" : "pin")
             }
             .disabled(selection.isEmpty)
         case .delete:
             Button(role: .destructive) { confirmDelete = true } label: {
-                Label("ลบ", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
             .disabled(selection.isEmpty)
         case nil:
@@ -206,18 +206,18 @@ struct LibraryView: View {
 
     private var composeMenu: some View {
         Menu {
-            Section("สร้างโน้ตจาก") {
+            Section("Create a note from") {
                 ForEach(SourceKind.allCases) { kind in
                     Button { request = kind } label: { Label(kind.addLabel, systemImage: kind.symbol) }
                 }
             }
             Button(action: createNotebook) {
-                Label("โน้ตเปล่า", systemImage: "book.closed")
+                Label("Empty note", systemImage: "book.closed")
             }
         } label: {
-            Label("สร้าง", systemImage: "square.and.pencil")
+            Label("Create", systemImage: "square.and.pencil")
         }
-        .accessibilityLabel("สร้างโน้ตใหม่")
+        .accessibilityLabel("New note")
     }
 
     // MARK: Actions
@@ -236,14 +236,14 @@ struct LibraryView: View {
 
     private func notebookForNewSource() -> Notebook {
         if let pendingNotebook { return pendingNotebook }
-        let notebook = Notebook(title: "สมุดใหม่ \(Date().formatted(date: .abbreviated, time: .shortened))")
+        let notebook = Notebook(title: "New notebook \(Date().formatted(date: .abbreviated, time: .shortened))")
         modelContext.insert(notebook)
         pendingNotebook = notebook
         return notebook
     }
 
     private func createNotebook() {
-        let notebook = Notebook(title: "สมุดใหม่ \(Date().formatted(date: .abbreviated, time: .omitted))")
+        let notebook = Notebook(title: "New notebook \(Date().formatted(date: .abbreviated, time: .omitted))")
         modelContext.insert(notebook)
         path.append(notebook)
     }
@@ -265,7 +265,7 @@ private struct BottomDock<Trailing: View>: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .searchable(text: $search, prompt: "ค้นหา")
+                .searchable(text: $search, prompt: "Search")
                 .searchToolbarBehavior(.minimize)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
@@ -274,7 +274,7 @@ private struct BottomDock<Trailing: View>: ViewModifier {
                 }
         } else {
             content
-                .searchable(text: $search, prompt: "ค้นหา")
+                .searchable(text: $search, prompt: "Search")
                 .toolbar {
                     ToolbarItemGroup(placement: .bottomBar) {
                         Spacer()
@@ -472,7 +472,7 @@ struct NotebookCard: View {
     static func dateLabel(_ date: Date) -> String {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) { return date.formatted(date: .omitted, time: .shortened) }
-        if calendar.isDateInYesterday(date) { return "เมื่อวาน" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
         if let days = calendar.dateComponents([.day], from: date, to: .now).day, days < 7 {
             return date.formatted(.dateTime.weekday(.wide))
         }

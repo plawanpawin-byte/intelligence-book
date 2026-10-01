@@ -31,11 +31,11 @@ final class LLMService {
 
     var statusText: String {
         switch state {
-        case .idle: "ยังไม่ได้โหลด"
-        case .downloading(let p): "กำลังดาวน์โหลด \(Int(p * 100))%"
-        case .loading: "กำลังโหลดเข้าหน่วยความจำ"
-        case .ready(let v): "\(v.displayName) พร้อมใช้งาน"
-        case .failed(let m): "ผิดพลาด: \(m)"
+        case .idle: "Not loaded"
+        case .downloading(let p): "Downloading model \(Int(p * 100))%"
+        case .loading: "Loading model into memory"
+        case .ready(let v): "\(v.displayName) ready"
+        case .failed(let m): "Error: \(m)"
         }
     }
 
@@ -183,7 +183,7 @@ final class LLMService {
 enum RepetitionGuard {
     private static func key(_ line: String) -> String {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        // Headings, callout headers and table rows legitimately repeat ("> [!tip] ประเด็นสำคัญ").
+        // Headings, callout headers and table rows legitimately repeat ("> [!tip] Key point").
         if trimmed.hasPrefix("#") || trimmed.hasPrefix("> [!") || trimmed.hasPrefix("|") || trimmed.hasPrefix("```") {
             return ""
         }
@@ -199,7 +199,7 @@ enum RepetitionGuard {
             counts[k, default: 0] += 1
             if counts[k]! >= 3 { return true }
         }
-        // A phrase repeating inside one long line ("A เพราะ B A เพราะ B A เพราะ B").
+        // A phrase repeating inside one long line ("A because B A because B A because B").
         let tail = String(text.suffix(300))
         if tail.count == 300 {
             for size in stride(from: 20, through: 100, by: 1) {

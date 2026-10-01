@@ -38,34 +38,16 @@ final class SourceProcessor {
         do {
             switch source.kind {
             case .pdf:
-                guard let url = source.fileURL else { throw AppError.message("ไม่พบไฟล์") }
-                source.detail = "กำลังอ่าน PDF"
+                guard let url = source.fileURL else { throw AppError.message("File not found") }
+                source.detail = "Reading PDF"
                 source.text = try await PDFExtractor.extract(url: url)
 
             case .web:
-                source.detail = "กำลังดึงหน้าเว็บ"
+                source.detail = "Fetching web page"
                 let result = try await WebExtractor.fetch(source.urlString ?? "")
                 source.text = result.text
                 if !result.title.isEmpty { source.title = result.title }
                 source.imageURL = result.image
-
-            case .youtube:
-                source.imageURL = YouTubeTranscript.thumbnailURL(for: source.urlString ?? "")
-                guard let id = YouTubeTranscript.videoID(from: source.urlString ?? "") else {
-                    throw AppError.message("ไม่พบรหัสวิดีโอ YouTube ในลิงก์นี้")
-                }
-                if let title = await GeminiYouTube.title(videoID: id) { source.title = title }
-                source.detail = "กำลังดึง transcript จาก YouTube"
-                do {
-                    let result = try await YouTubeTranscript.fetch(source.urlString ?? "")
-                    source.text = result.text
-                    if source.title == source.urlString, !result.title.isEmpty { source.title = result.title }
-                } catch {
-                    // Optional fallback for videos without captions.
-                    guard let key = GeminiKey.value else { throw error }
-                    source.detail = "ไม่มีคำบรรยาย — Gemini กำลังถอดคำพูดจากวิดีโอ…"
-                    source.text = try await GeminiYouTube.transcript(videoID: id, key: key)
-                }
 
             case .text:
                 break
@@ -74,22 +56,22 @@ final class SourceProcessor {
                 break // already transcribed live while recording
 
             case .audio, .recording:
-                guard let url = source.fileURL else { throw AppError.message("ไม่พบไฟล์เสียง") }
-                source.detail = "กำลังถอดเสียง 0%"
+                guard let url = source.fileURL else { throw AppError.message("Audio file not found") }
+                source.detail = "Transcribing 0%"
                 source.text = try await SpeechTranscriber.transcribe(url: url, locale: .current) { fraction in
-                    source.detail = "กำลังถอดเสียง \(Int(fraction * 100))%"
+                    source.detail = "Transcribing \(Int(fraction * 100))%"
                 }
             }
 
             let trimmed = source.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { throw AppError.message("ไม่พบข้อความในแหล่งข้อมูลนี้") }
+            guard !trimmed.isEmpty else { throw AppError.message("No text found in this source") }
             source.text = trimmed
             source.status = .ready
-            source.detail = "\(trimmed.count.formatted()) ตัวอักษร"
+            source.detail = "\(trimmed.count.formatted()) characters"
             source.notebook?.touch()
         } catch is CancellationError {
             source.status = .failed
-            source.detail = "ยกเลิกแล้ว"
+            source.detail = "Cancelled"
         } catch {
             source.status = .failed
             source.detail = error.localizedDescription

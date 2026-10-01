@@ -34,7 +34,7 @@ final class AudioRecorder {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else { throw AppError.message("ไม่พบไมโครโฟน") }
+        guard format.sampleRate > 0, format.channelCount > 0 else { throw AppError.message("No microphone found") }
 
         let name = FileStore.newRecordingName()
         let settings: [String: Any] = [

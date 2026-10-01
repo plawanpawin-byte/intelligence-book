@@ -57,8 +57,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSMicrophoneUsageDescription: IntelligenceBook ใช้ไมโครโฟนเพื่ออัดเสียงบรรยายหรือการประชุมแล้วสรุปเป็นโน้ต
-        NSSpeechRecognitionUsageDescription: IntelligenceBook แปลงเสียงที่อัดหรือไฟล์เสียงเป็นข้อความเพื่อนำไปสรุป
+        NSMicrophoneUsageDescription: IntelligenceBook uses the microphone to record lectures and meetings and turn them into notes.
+        NSSpeechRecognitionUsageDescription: IntelligenceBook transcribes your recordings and audio files so they can be summarised.
         UIBackgroundModes: [audio]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: false

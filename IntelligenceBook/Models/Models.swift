@@ -34,29 +34,27 @@ final class Notebook {
 // MARK: - Source
 
 enum SourceKind: String, CaseIterable, Identifiable, Codable {
-    case pdf, web, youtube, text, audio, recording
+    case pdf, web, text, audio, recording
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .pdf: "PDF"
-        case .web: "ลิงก์เว็บ"
-        case .youtube: "YouTube"
-        case .text: "ข้อความ"
-        case .audio: "ไฟล์เสียง"
-        case .recording: "อัดเสียง"
+        case .web: "Web link"
+        case .text: "Text"
+        case .audio: "Audio file"
+        case .recording: "Recording"
         }
     }
 
     var addLabel: String {
         switch self {
-        case .pdf: "ไฟล์ PDF"
-        case .web: "ลิงก์เว็บไซต์"
-        case .youtube: "ลิงก์ YouTube"
-        case .text: "วางข้อความ"
-        case .audio: "ไฟล์เสียง"
-        case .recording: "อัดเสียงตอนนี้"
+        case .pdf: "PDF file"
+        case .web: "Website link"
+        case .text: "Paste text"
+        case .audio: "Audio file"
+        case .recording: "Record audio"
         }
     }
 
@@ -64,7 +62,6 @@ enum SourceKind: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .pdf: "doc.richtext"
         case .web: "link"
-        case .youtube: "play.rectangle"
         case .text: "text.alignleft"
         case .audio: "waveform"
         case .recording: "mic"
@@ -77,9 +74,9 @@ enum SourceStatus: String, Codable {
 
     var label: String {
         switch self {
-        case .processing: "กำลังประมวลผล"
-        case .ready: "พร้อมใช้"
-        case .failed: "ผิดพลาด"
+        case .processing: "Processing"
+        case .ready: "Ready"
+        case .failed: "Failed"
         }
     }
 }
@@ -95,7 +92,7 @@ final class Source {
     var detail: String?
     var urlString: String?
     var fileName: String?
-    /// Cover image for the library card (YouTube thumbnail, web og:image).
+    /// Cover image for the library card (web page og:image).
     var imageURL: String?
     var notebook: Notebook?
 
@@ -129,19 +126,19 @@ enum NoteStyle: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
-        case .summary: "สรุปใจความ"
-        case .studyGuide: "คู่มืออ่านทบทวน"
-        case .outline: "โครงร่าง"
-        case .questions: "คำถามทบทวน"
+        case .summary: "Summary"
+        case .studyGuide: "Study guide"
+        case .outline: "Outline"
+        case .questions: "Review questions"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .summary: "ประเด็นสำคัญ ไฮไลท์ และนิยาม"
-        case .studyGuide: "อธิบายละเอียด พร้อมคำศัพท์และตัวอย่าง"
-        case .outline: "หัวข้อเป็นลำดับชั้น อ่านเร็ว"
-        case .questions: "คำถาม-คำตอบสำหรับทบทวน"
+        case .summary: "Key points, highlights and definitions"
+        case .studyGuide: "In-depth explanations with terms and examples"
+        case .outline: "Nested headings, quick to scan"
+        case .questions: "Questions and answers for review"
         }
     }
 
@@ -218,7 +215,7 @@ enum FileStore {
             do { try FileManager.default.copyItem(at: readable, to: dest) } catch { copyError = error }
         }
         if let error = coordinationError ?? copyError {
-            throw AppError.message("เปิดไฟล์ไม่ได้ — ถ้าไฟล์อยู่ใน iCloud/Drive ให้ดาวน์โหลดลงเครื่องก่อน (\(error.localizedDescription))")
+            throw AppError.message("Couldn’t open the file — if it’s in iCloud or Drive, download it to the device first (\(error.localizedDescription))")
         }
         return name
     }

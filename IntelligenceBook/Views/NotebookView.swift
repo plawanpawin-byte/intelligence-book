@@ -18,7 +18,7 @@ struct NotebookView: View {
     var body: some View {
         List {
             if !notebook.notes.isEmpty {
-                Section("โน้ต") {
+                Section("Notes") {
                     ForEach(notebook.sortedNotes) { note in
                         NavigationLink(value: note) { NoteRow(note: note) }
                     }
@@ -43,10 +43,10 @@ struct NotebookView: View {
                 }
                 addSourceMenu
             } header: {
-                Text("แหล่งข้อมูล")
+                Text("Sources")
             } footer: {
                 if notebook.sources.isEmpty {
-                    Text("เพิ่ม PDF ลิงก์ YouTube ข้อความ ไฟล์เสียง หรืออัดเสียงสด ๆ")
+                    Text("Add a PDF, web link, text, audio file or a live recording.")
                 }
             }
         }
@@ -63,19 +63,19 @@ struct NotebookView: View {
                     Button {
                         renameText = notebook.title
                         renaming = true
-                    } label: { Label("เปลี่ยนชื่อ", systemImage: "pencil") }
+                    } label: { Label("Rename", systemImage: "pencil") }
                     Button { notebook.isPinned.toggle() } label: {
-                        Label(notebook.isPinned ? "เลิกปักหมุด" : "ปักหมุด", systemImage: notebook.isPinned ? "pin.slash" : "pin")
+                        Label(notebook.isPinned ? "Unpin" : "Pin", systemImage: notebook.isPinned ? "pin.slash" : "pin")
                     }
                 } label: {
-                    Label("ตัวเลือก", systemImage: "ellipsis.circle")
+                    Label("Options", systemImage: "ellipsis.circle")
                 }
             }
         }
-        .alert("เปลี่ยนชื่อสมุด", isPresented: $renaming) {
-            TextField("ชื่อสมุด", text: $renameText)
-            Button("ยกเลิก", role: .cancel) {}
-            Button("บันทึก") { if !renameText.isEmpty { notebook.title = renameText } }
+        .alert("Rename notebook", isPresented: $renaming) {
+            TextField("Notebook name", text: $renameText)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") { if !renameText.isEmpty { notebook.title = renameText } }
         }
         .sourceImporter(request: $request, notebook: { notebook })
         .sheet(isPresented: $showGenerate) {
@@ -94,7 +94,7 @@ struct NotebookView: View {
                 Button { request = kind } label: { Label(kind.addLabel, systemImage: kind.symbol) }
             }
         } label: {
-            Label("เพิ่มแหล่งข้อมูล", systemImage: "plus.circle.fill")
+            Label("Add source", systemImage: "plus.circle.fill")
         }
     }
 
@@ -103,7 +103,7 @@ struct NotebookView: View {
             Button {
                 showGenerate = true
             } label: {
-                Label("สร้างโน้ตด้วย AI", systemImage: "sparkles")
+                Label("Create note with AI", systemImage: "sparkles")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
             }
@@ -112,7 +112,7 @@ struct NotebookView: View {
             .disabled(!hasReadySource)
 
             if isProcessing {
-                Label("กำลังประมวลผลแหล่งข้อมูล…", systemImage: "hourglass")
+                Label("Processing sources…", systemImage: "hourglass")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -198,37 +198,34 @@ struct SourceDetailView: View {
     var body: some View {
         List {
             Section {
-                LabeledContent("ชนิด", value: source.kind.label)
-                LabeledContent("สถานะ") {
+                LabeledContent("Type", value: source.kind.label)
+                LabeledContent("Status") {
                     HStack(spacing: 6) {
                         if source.status == .processing { ProgressView() }
                         Text(source.detail ?? source.status.label)
                             .foregroundStyle(source.status == .failed ? Color.red : Color.secondary)
                     }
                 }
-                LabeledContent("เพิ่มเมื่อ", value: source.createdAt.formatted(date: .abbreviated, time: .shortened))
+                LabeledContent("Added", value: source.createdAt.formatted(date: .abbreviated, time: .shortened))
                 if let link = source.urlString, let url = URL(string: link) {
-                    Link(destination: url) { Label("เปิดต้นฉบับ", systemImage: "safari") }
+                    Link(destination: url) { Label("Open original", systemImage: "safari") }
                 }
                 if source.status == .failed {
                     Button { SourceProcessor.shared.process(source) } label: {
-                        Label("ลองอีกครั้ง", systemImage: "arrow.clockwise")
+                        Label("Try again", systemImage: "arrow.clockwise")
                     }
                 }
             }
 
-            if source.kind == .youtube, source.status == .failed {
-                GeminiKeySection()
-            }
 
             if (source.kind == .audio || source.kind == .recording), source.fileURL != nil {
-                Section("เสียง") {
+                Section("Audio") {
                     PlayerControls(player: player)
                 }
             }
 
             if !source.text.isEmpty {
-                Section("ข้อความที่ดึงได้") {
+                Section("Extracted text") {
                     Text(source.text.count > 30_000 ? String(source.text.prefix(30_000)) + "\n…" : source.text)
                         .font(.callout)
                         .textSelection(.enabled)
@@ -257,15 +254,15 @@ private struct PlayerControls: View {
             .foregroundStyle(.secondary)
             HStack(spacing: 36) {
                 Button { player.skip(-15) } label: { Image(systemName: "gobackward.15") }
-                    .accessibilityLabel("ย้อน 15 วินาที")
+                    .accessibilityLabel("Back 15 seconds")
                 Button { player.toggle() } label: {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.title)
                 }
-                .accessibilityLabel(player.isPlaying ? "หยุด" : "เล่น")
+                .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
                 Button { player.skip(15) } label: { Image(systemName: "goforward.15") }
-                    .accessibilityLabel("ข้าม 15 วินาที")
+                    .accessibilityLabel("Forward 15 seconds")
                 Menu {
-                    Picker("ความเร็ว", selection: $player.rate) {
+                    Picker("Speed", selection: $player.rate) {
                         ForEach([Float(0.75), 1, 1.25, 1.5, 2], id: \.self) { Text("\($0.formatted())×").tag($0) }
                     }
                 } label: {

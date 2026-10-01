@@ -13,7 +13,7 @@ enum SpeechLocale: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .thai: "ไทย"
+        case .thai: "Thai"
         case .english: "English (US)"
         case .englishUK: "English (UK)"
         case .japanese: "日本語"
@@ -23,7 +23,7 @@ enum SpeechLocale: String, CaseIterable, Identifiable {
 
     var shortLabel: String {
         switch self {
-        case .thai: "ไทย"
+        case .thai: "TH"
         case .english: "EN"
         case .englishUK: "UK"
         case .japanese: "日本"
@@ -58,19 +58,19 @@ enum SpeechTranscriber {
         progress: @escaping @MainActor (Double) -> Void
     ) async throws -> String {
         guard await requestAuthorization() else {
-            throw AppError.message("ยังไม่ได้อนุญาต Speech Recognition — เปิดได้ที่ การตั้งค่า > IntelligenceBook")
+            throw AppError.message("Speech Recognition isn’t allowed — turn it on in Settings > IntelligenceBook")
         }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale.rawValue)) else {
-            throw AppError.message("เครื่องนี้ไม่รองรับการถอดเสียงภาษา \(locale.label)")
+            throw AppError.message("This device can’t transcribe \(locale.label)")
         }
         guard recognizer.isAvailable else {
-            throw AppError.message("ระบบถอดเสียงไม่พร้อมใช้งานตอนนี้ (ตรวจสอบอินเทอร์เน็ต)")
+            throw AppError.message("Speech recognition isn’t available right now (check your internet connection)")
         }
 
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
         let totalFrames = file.length
-        guard totalFrames > 0 else { throw AppError.message("ไฟล์เสียงว่างเปล่า") }
+        guard totalFrames > 0 else { throw AppError.message("The audio file is empty") }
         let sliceFrames = AVAudioFramePosition(format.sampleRate * 50)
 
         var pieces: [String] = []
@@ -101,7 +101,7 @@ enum SpeechTranscriber {
             let text = try await recognize(request, with: recognizer)
             if !text.isEmpty {
                 let seconds = Int(Double(start) / format.sampleRate)
-                pieces.append("[\(YouTubeTranscript.timestamp(ms: seconds * 1000))] \(text)")
+                pieces.append("[\(Timestamp.string(ms: seconds * 1000))] \(text)")
             }
             start += count
             await progress(Double(start) / Double(totalFrames))
@@ -233,7 +233,7 @@ final class LiveTranscriber: @unchecked Sendable {
         let lines = pieces.compactMap { piece -> String? in
             let text = piece.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return nil }
-            return "[\(YouTubeTranscript.timestamp(ms: Int(piece.start * 1000)))] \(text)"
+            return "[\(Timestamp.string(ms: Int(piece.start * 1000)))] \(text)"
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }

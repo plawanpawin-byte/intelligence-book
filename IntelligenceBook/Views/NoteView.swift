@@ -19,7 +19,7 @@ struct NoteView: View {
 
                 if !note.sourceTitles.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("แหล่งข้อมูล")
+                        Text("Sources")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ForEach(note.sourceTitles, id: \.self) { title in
@@ -39,8 +39,8 @@ struct NoteView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { editing = true } label: { Label("แก้ไข", systemImage: "pencil") }
-                Button { showShare = true } label: { Label("แชร์", systemImage: "square.and.arrow.up") }
+                Button { editing = true } label: { Label("Edit", systemImage: "pencil") }
+                Button { showShare = true } label: { Label("Share", systemImage: "square.and.arrow.up") }
             }
         }
         .sheet(isPresented: $editing) {
@@ -51,7 +51,7 @@ struct NoteView: View {
                 ShareDestinationList(note: note) { showShare = false }
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) { Button("เสร็จ") { showShare = false } }
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { showShare = false } }
                     }
             }
             .presentationDetents([.medium, .large])
@@ -76,20 +76,20 @@ struct NoteEditorView: View {
                         .padding(.horizontal, 8)
                 }
             }
-            .navigationTitle("แก้ไขโน้ต")
+            .navigationTitle("Edit note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("ยกเลิก") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .principal) {
-                    Picker("โหมด", selection: $preview) {
+                    Picker("Mode", selection: $preview) {
                         Text("Markdown").tag(false)
-                        Text("ตัวอย่าง").tag(true)
+                        Text("Preview").tag(true)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 200)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("บันทึก") {
+                    Button("Save") {
                         note.markdown = draft
                         note.title = NoteCleaner.title(from: draft, fallback: note.title)
                         note.updatedAt = Date()
@@ -99,23 +99,23 @@ struct NoteEditorView: View {
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Menu {
-                        Button("สรุป (ม่วง)") { insert("\n> [!summary] สรุป\n> ") }
-                        Button("นิยาม (เขียวอมฟ้า)") { insert("\n> [!definition] คำศัพท์\n> ") }
-                        Button("ประเด็นสำคัญ (เหลือง)") { insert("\n> [!tip] ประเด็นสำคัญ\n> ") }
-                        Button("คำถาม (ส้ม)") { insert("\n> [!question] คำถาม\n> ") }
-                        Button("ข้อควรระวัง (แดง)") { insert("\n> [!warning] ข้อควรระวัง\n> ") }
+                        Button("Summary (yellow)") { insert("\n> [!summary] Summary\n> ") }
+                        Button("Definition (teal)") { insert("\n> [!definition] Term\n> ") }
+                        Button("Key point (orange)") { insert("\n> [!tip] Key point\n> ") }
+                        Button("Question (pink)") { insert("\n> [!question] Question\n> ") }
+                        Button("Caution (red)") { insert("\n> [!warning] Caution\n> ") }
                     } label: {
                         Image(systemName: "rectangle.stack.badge.plus")
                     }
-                    .accessibilityLabel("แทรกกล่องสี")
-                    Button { insert("==ไฮไลท์==") } label: { Image(systemName: "highlighter") }
-                        .accessibilityLabel("ไฮไลท์")
-                    Button { insert("**ตัวหนา**") } label: { Image(systemName: "bold") }
-                        .accessibilityLabel("ตัวหนา")
+                    .accessibilityLabel("Insert callout")
+                    Button { insert("==highlight==") } label: { Image(systemName: "highlighter") }
+                        .accessibilityLabel("Highlight")
+                    Button { insert("**bold**") } label: { Image(systemName: "bold") }
+                        .accessibilityLabel("Bold")
                     Button { insert("\n- [ ] ") } label: { Image(systemName: "checklist") }
-                        .accessibilityLabel("รายการที่ต้องทำ")
+                        .accessibilityLabel("To-do item")
                     Button { insert("\n```\n\n```\n") } label: { Image(systemName: "chevron.left.forwardslash.chevron.right") }
-                        .accessibilityLabel("โค้ด")
+                        .accessibilityLabel("Code")
                     Spacer()
                 }
             }

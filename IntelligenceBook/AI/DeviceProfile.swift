@@ -70,9 +70,9 @@ enum ModelPreference: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .auto: "อัตโนมัติ (ตามเครื่อง)"
-        case .b1: "1B — เร็ว ประหยัดแรม"
-        case .b3: "3B — ฉลาดกว่า ช้ากว่า"
+        case .auto: "Automatic (by device)"
+        case .b1: "1B — fast, low memory"
+        case .b3: "3B — smarter, slower"
         }
     }
 }
@@ -96,7 +96,7 @@ enum DeviceProfile {
     static var selected: LlamaVariant { recommended }
 
     static var deviceSummary: String {
-        String(format: "แรม %.1f GB · %d คอร์", ramGB, processorCount)
+        String(format: "%.1f GB RAM · %d cores", ramGB, processorCount)
     }
 
     // MARK: Model cache on disk (swift-huggingface cache: Library/Caches/huggingface/hub)

@@ -16,9 +16,9 @@ struct ShareDestinationList: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.largeTitle)
                         .foregroundStyle(.green)
-                    Text("บันทึกโน้ตแล้ว")
+                    Text("Note saved")
                         .font(.title3.bold())
-                    Text("จะแชร์ “\(note.title)” ไปที่ไหน?")
+                    Text("Where do you want to share “\(note.title)”?")
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -27,44 +27,44 @@ struct ShareDestinationList: View {
             }
 
             Section {
-                destination("Obsidian", subtitle: "สร้างโน้ตใหม่ใน vault (Markdown + callout สี)", symbol: "diamond.fill", tint: .purple) {
+                destination("Obsidian", subtitle: "New note in your vault (Markdown + coloured callouts)", symbol: "diamond.fill", tint: .purple) {
                     openInObsidian()
                 }
-                destination("Canva", subtitle: "ส่งเป็น PDF สี — เลือก Canva ในแผ่นแชร์", symbol: "paintpalette.fill", tint: .cyan) {
+                destination("Canva", subtitle: "Sends a colour PDF — pick Canva in the share sheet", symbol: "paintpalette.fill", tint: .cyan) {
                     sharePDF()
                 }
-                destination("โน้ต (Notes)", subtitle: "ส่งเป็นข้อความพร้อม PDF แนบ", symbol: "note.text", tint: .yellow) {
+                destination("Notes", subtitle: "Sends the text with the PDF attached", symbol: "note.text", tint: .yellow) {
                     shareForNotes()
                 }
             } header: {
-                Text("แชร์ไปที่")
+                Text("Share to")
             }
 
             Section {
                 destination("Markdown (.md)", subtitle: "Obsidian, Files, Bear, Notion", symbol: "doc.plaintext", tint: .gray) {
                     shareMarkdown()
                 }
-                destination("PDF", subtitle: "พิมพ์ ส่งอีเมล หรือ AirDrop", symbol: "doc.richtext", tint: .red) {
+                destination("PDF", subtitle: "Print, email or AirDrop", symbol: "doc.richtext", tint: .red) {
                     sharePDF()
                 }
-                destination("ข้อความ", subtitle: "คัดลอกหรือส่งในแชท", symbol: "text.quote", tint: .blue) {
+                destination("Text", subtitle: "Copy or send in a chat", symbol: "text.quote", tint: .blue) {
                     SharePresenter.present([NoteExporter.plainText(for: note)])
                 }
             } header: {
-                Text("ส่งออกผ่านแผ่นแชร์ iOS")
+                Text("Export with the iOS share sheet")
             }
 
             Section {
                 Button {
                     onFinished()
                 } label: {
-                    Label("เก็บไว้ในแอปอย่างเดียว", systemImage: "tray.and.arrow.down")
+                    Label("Keep in the app only", systemImage: "tray.and.arrow.down")
                 }
             }
         }
-        .navigationTitle("แชร์โน้ต")
-        .alert("แชร์ไม่สำเร็จ", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
-            Button("ตกลง", role: .cancel) {}
+        .navigationTitle("Share note")
+        .alert("Couldn’t share", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
+            Button("OK", role: .cancel) {}
         } message: {
             Text(errorText ?? "")
         }

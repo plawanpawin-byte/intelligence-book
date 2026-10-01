@@ -56,8 +56,8 @@ struct GenerateView: View {
 
     private var configureView: some View {
         Form {
-            Section("รูปแบบโน้ต") {
-                Picker("รูปแบบโน้ต", selection: $style) {
+            Section("Note style") {
+                Picker("Note style", selection: $style) {
                     ForEach(NoteStyle.allCases) { style in
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
@@ -91,27 +91,27 @@ struct GenerateView: View {
                     }
                 }
             } header: {
-                Text("แหล่งข้อมูลที่ใช้")
+                Text("Sources to use")
             } footer: {
-                Text("AI จะสรุปจากแหล่งที่เลือกเท่านั้น และไม่เพิ่มข้อเท็จจริงจากภายนอก")
+                Text("The AI only summarises the selected sources and doesn’t add outside facts.")
             }
 
             Section {
-                Picker("ภาษาโน้ต", selection: $languageRaw) {
+                Picker("Note language", selection: $languageRaw) {
                     ForEach(OutputLanguage.allCases) { Text($0.label).tag($0.rawValue) }
                 }
-                LabeledContent("โมเดล", value: DeviceProfile.selected.displayName)
+                LabeledContent("Model", value: DeviceProfile.selected.displayName)
             } header: {
-                Text("AI บนเครื่อง")
+                Text("On-device AI")
             } footer: {
                 if !DeviceProfile.isDownloaded(DeviceProfile.selected) {
-                    Text("ครั้งแรกจะดาวน์โหลด \(DeviceProfile.selected.displayName) \(DeviceProfile.selected.downloadSize) (แนะนำให้ใช้ Wi-Fi) หลังจากนั้นทำงานออฟไลน์ได้")
+                    Text("The first time, \(DeviceProfile.selected.displayName) (\(DeviceProfile.selected.downloadSize)) is downloaded — Wi-Fi recommended. After that it works offline.")
                 } else {
-                    Text("ประมวลผลบนเครื่องทั้งหมด ข้อมูลไม่ถูกส่งออกไปไหน")
+                    Text("Everything runs on this device. Nothing is sent anywhere.")
                 }
             }
         }
-        .navigationTitle("สร้างโน้ตด้วย AI")
+        .navigationTitle("Create note with AI")
     }
 
     // MARK: Running
@@ -129,7 +129,7 @@ struct GenerateView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .contentTransition(.opacity)
-                    Text("เปิดแอปค้างไว้ระหว่างสรุป หน้าจอจะไม่ดับเอง (iOS หยุดการประมวลผล AI เมื่อออกจากแอป)")
+                    Text("Keep the app open while it writes — the screen stays on (iOS pauses on-device AI in the background).")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -155,14 +155,14 @@ struct GenerateView: View {
     private var reviewView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Label("สร้างโดย AI (\(DeviceProfile.selected.displayName)) — ตรวจทานก่อนนำไปใช้", systemImage: "sparkles")
+                Label("Written by AI (\(DeviceProfile.selected.displayName)) — review before using", systemImage: "sparkles")
                     .font(.footnote)
                     .foregroundStyle(.tint)
                 NoteContentView(markdown: job.output)
             }
             .padding()
         }
-        .navigationTitle("ตรวจทานโน้ต")
+        .navigationTitle("Review note")
     }
 
     // MARK: Toolbar
@@ -172,33 +172,33 @@ struct GenerateView: View {
         ToolbarItem(placement: .cancellationAction) {
             switch stage {
             case .configure:
-                Button("ยกเลิก") { dismiss() }
+                Button("Cancel") { dismiss() }
             case .running:
-                Button("หยุด", role: .cancel) {
+                Button("Stop", role: .cancel) {
                     task?.cancel()
                     stage = .configure
                 }
             case .review:
-                Button("ทิ้ง", role: .destructive) { dismiss() }
+                Button("Discard", role: .destructive) { dismiss() }
             case .share:
                 EmptyView()
             }
         }
         ToolbarItem(placement: .primaryAction) {
             if stage == .review {
-                Button("สร้างใหม่", systemImage: "arrow.clockwise", action: start)
+                Button("Regenerate", systemImage: "arrow.clockwise", action: start)
             }
         }
         ToolbarItem(placement: .confirmationAction) {
             switch stage {
             case .configure:
-                Button("สร้าง", action: start).disabled(selected.isEmpty)
+                Button("Create", action: start).disabled(selected.isEmpty)
             case .running:
                 EmptyView()
             case .review:
-                Button("บันทึก", action: save)
+                Button("Save", action: save)
             case .share:
-                Button("เสร็จ") { dismiss() }
+                Button("Done") { dismiss() }
             }
         }
     }
@@ -230,7 +230,7 @@ struct GenerateView: View {
         modelContext.insert(note)
         note.notebook = notebook
         notebook.touch()
-        if notebook.notes.count == 1, notebook.title.hasPrefix("สมุดใหม่") {
+        if notebook.notes.count == 1, notebook.title.hasPrefix("New notebook") {
             notebook.title = note.title
         }
         savedNote = note

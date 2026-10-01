@@ -60,14 +60,14 @@ enum CalloutKind: String, CaseIterable {
 
     var defaultTitle: String {
         switch self {
-        case .summary: "สรุป"
-        case .definition: "นิยาม"
-        case .tip: "ประเด็นสำคัญ"
-        case .question: "คำถาม"
-        case .example: "ตัวอย่าง"
-        case .warning: "ข้อควรระวัง"
-        case .quote: "อ้างอิง"
-        case .note: "โน้ต"
+        case .summary: "Summary"
+        case .definition: "Definition"
+        case .tip: "Key point"
+        case .question: "Question"
+        case .example: "Example"
+        case .warning: "Caution"
+        case .quote: "Quote"
+        case .note: "Note"
         }
     }
 

@@ -37,7 +37,7 @@ private struct SourceImportModifier: ViewModifier {
                         handleFiles(.success(urls))
                     }
                     .ignoresSafeArea()
-                case .web, .youtube:
+                case .web:
                     LinkEntrySheet(kind: kind) { link in
                         add(Source(kind: kind, title: link, urlString: link))
                     }
@@ -47,13 +47,13 @@ private struct SourceImportModifier: ViewModifier {
                     }
                 case .recording:
                     RecorderSheet { fileName, duration, transcript in
-                        let title = "บันทึกเสียง \(Date().formatted(date: .abbreviated, time: .shortened)) (\(duration.clockString))"
+                        let title = "Recording \(Date().formatted(date: .abbreviated, time: .shortened)) (\(duration.clockString))"
                         add(Source(kind: .recording, title: title, text: transcript ?? "", fileName: fileName))
                     }
                 }
             }
-            .alert("นำเข้าไม่สำเร็จ", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
-                Button("ตกลง", role: .cancel) {}
+            .alert("Import failed", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
+                Button("OK", role: .cancel) {}
             } message: {
                 Text(importError ?? "")
             }
@@ -84,7 +84,7 @@ private struct SourceImportModifier: ViewModifier {
         target.touch()
         if source.kind == .text {
             source.status = .ready
-            source.detail = "\(source.text.count.formatted()) ตัวอักษร"
+            source.detail = "\(source.text.count.formatted()) characters"
         } else {
             SourceProcessor.shared.process(source)
         }
@@ -131,15 +131,14 @@ struct LinkEntrySheet: View {
     @FocusState private var focused: Bool
 
     private var isValid: Bool {
-        guard WebExtractor.normalize(link) != nil else { return false }
-        return kind != .youtube || YouTubeTranscript.videoID(from: link) != nil
+        WebExtractor.normalize(link) != nil
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(kind == .youtube ? "https://youtu.be/…" : "https://", text: $link)
+                    TextField("https://", text: $link)
                         .keyboardType(.URL)
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
@@ -152,66 +151,25 @@ struct LinkEntrySheet: View {
                     }
                 } footer: {
                     if kind == .web {
-                        Text("ดึงเฉพาะเนื้อหาที่อ่านได้จากหน้าเว็บ หน้าที่ต้องล็อกอินหรือมี paywall อาจดึงไม่ได้")
+                        Text("Only the readable text of the page is used. Pages behind a login or paywall may not work.")
                     }
-                }
-                if kind == .youtube {
-                    GeminiKeySection()
                 }
             }
             .navigationTitle(kind.addLabel)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("ยกเลิก") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("เพิ่ม", action: submit).disabled(!isValid) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Add", action: submit).disabled(!isValid) }
             }
             .onAppear { focused = true }
         }
-        .presentationDetents(kind == .youtube ? [.large] : [.medium])
+        .presentationDetents([.medium])
     }
 
     private func submit() {
         guard isValid else { return }
         onAdd(link.trimmingCharacters(in: .whitespacesAndNewlines))
         dismiss()
-    }
-}
-
-// MARK: - Gemini key
-
-/// Lets the user paste a Gemini API key; YouTube links are then transcribed by Gemini.
-struct GeminiKeySection: View {
-    @State private var hasKey = GeminiKey.isSet
-    @State private var draft = ""
-
-    var body: some View {
-        Section {
-            if hasKey {
-                Label("ใช้ Gemini ถอดคำพูดจาก YouTube", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Button("ลบ API key", role: .destructive) {
-                    GeminiKey.remove()
-                    hasKey = false
-                }
-            } else {
-                SecureField("วาง Gemini API key", text: $draft)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("บันทึก key") {
-                    GeminiKey.save(draft)
-                    draft = ""
-                    hasKey = GeminiKey.isSet
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespaces).count < 20)
-                Link(destination: URL(string: "https://aistudio.google.com/apikey")!) {
-                    Label("รับ API key ฟรีจาก Google AI Studio", systemImage: "key")
-                }
-            }
-        } header: {
-            Text("สำรอง: Gemini (ไม่บังคับ)")
-        } footer: {
-            Text("แอปดึง transcript จาก YouTube ให้เองอยู่แล้ว ใส่ key ไว้เผื่อเฉพาะวิดีโอที่ไม่มีคำบรรยาย ซึ่งจะส่งลิงก์ให้ Google Gemini ถอดคำพูดแทน key เก็บใน Keychain ของเครื่อง")
-        }
     }
 }
 
@@ -227,14 +185,14 @@ struct TextEntrySheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("ชื่อ (ไม่บังคับ)", text: $title)
+                    TextField("Title (optional)", text: $title)
                 }
                 Section {
                     TextEditor(text: $text)
                         .frame(minHeight: 260)
                         .overlay(alignment: .topLeading) {
                             if text.isEmpty {
-                                Text("วางหรือพิมพ์ข้อความที่นี่")
+                                Text("Paste or type text here")
                                     .foregroundStyle(.tertiary)
                                     .padding(.top, 8)
                                     .padding(.leading, 5)
@@ -245,15 +203,15 @@ struct TextEntrySheet: View {
                         text += strings.joined(separator: "\n")
                     }
                 } footer: {
-                    Text("\(text.count.formatted()) ตัวอักษร")
+                    Text("\(text.count.formatted()) characters")
                 }
             }
-            .navigationTitle("วางข้อความ")
+            .navigationTitle("Paste text")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("ยกเลิก") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("เพิ่ม") {
+                    Button("Add") {
                         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                         let name = title.isEmpty ? String(trimmed.prefix(40)) : title
                         onAdd(name, trimmed)
@@ -290,7 +248,7 @@ struct RecorderSheet: View {
                 Text(recorder.elapsed.clockString)
                     .font(.system(size: 64, weight: .light, design: .rounded).monospacedDigit())
                     .contentTransition(.numericText())
-                    .accessibilityLabel("เวลาที่อัด \(recorder.elapsed.clockString)")
+                    .accessibilityLabel("Recorded time \(recorder.elapsed.clockString)")
 
                 Text(statusText)
                     .font(.subheadline)
@@ -309,48 +267,48 @@ struct RecorderSheet: View {
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.circle)
                     .disabled(recorder.state == .idle)
-                    .accessibilityLabel(recorder.state == .paused ? "อัดต่อ" : "หยุดชั่วคราว")
+                    .accessibilityLabel(recorder.state == .paused ? "Resume" : "Pause")
 
                     RecordButton(isRecording: recorder.state != .idle) {
                         if recorder.state == .idle { start() } else { finish() }
                     }
 
                     Menu {
-                        Picker("ภาษาที่พูด", selection: $speechLocale) {
+                        Picker("Spoken language", selection: $speechLocale) {
                             ForEach(SpeechLocale.allCases) { Text($0.label).tag($0.rawValue) }
                         }
                     } label: {
-                        Text(SpeechLocale(rawValue: speechLocale)?.shortLabel ?? "ไทย")
+                        Text(SpeechLocale(rawValue: speechLocale)?.shortLabel ?? "TH")
                             .font(.subheadline.weight(.semibold))
                             .frame(width: 56, height: 56)
                     }
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.circle)
                     .disabled(recorder.state != .idle)
-                    .accessibilityLabel("ภาษาที่พูด")
+                    .accessibilityLabel("Spoken language")
                 }
                 .padding(.bottom, 32)
             }
-            .navigationTitle("อัดเสียง")
+            .navigationTitle("Record")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("ยกเลิก") {
+                    Button("Cancel") {
                         recorder.discard()
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("เสร็จ", action: finish).disabled(recorder.state == .idle)
+                    Button("Done", action: finish).disabled(recorder.state == .idle)
                 }
             }
-            .alert("ไม่ได้รับอนุญาตใช้ไมโครโฟน", isPresented: $permissionDenied) {
-                Button("เปิดการตั้งค่า") {
+            .alert("Microphone access is off", isPresented: $permissionDenied) {
+                Button("Open Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
-                Button("ปิด", role: .cancel) {}
+                Button("Close", role: .cancel) {}
             } message: {
-                Text("อนุญาตไมโครโฟนให้ IntelligenceBook ในการตั้งค่าเพื่ออัดเสียง")
+                Text("Allow IntelligenceBook to use the microphone in Settings to record.")
             }
         }
         .interactiveDismissDisabled(recorder.state != .idle)
@@ -359,13 +317,13 @@ struct RecorderSheet: View {
     private var statusText: String {
         if let errorText { return errorText }
         switch recorder.state {
-        case .idle: return "แตะปุ่มสีแดงเพื่อเริ่มอัด"
+        case .idle: return "Tap the red button to start recording"
         case .recording:
-            if finishing { return "กำลังเก็บข้อความที่ถอดไว้…" }
+            if finishing { return "Collecting the transcript…" }
             return recorder.transcribedPieces > 0
-                ? "กำลังอัด… ถอดเสียงไปแล้ว \(recorder.transcribedPieces) ช่วง · ล็อกจอได้"
-                : "กำลังอัด… ล็อกจอได้ เสียงยังอัดต่อ"
-        case .paused: return "หยุดชั่วคราว"
+                ? "Recording… \(recorder.transcribedPieces) parts transcribed · you can lock the screen"
+                : "Recording… you can lock the screen"
+        case .paused: return "Paused"
         }
     }
 
@@ -411,7 +369,7 @@ private struct RecordButton: View {
             .animation(.spring(duration: 0.3), value: isRecording)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isRecording ? "หยุดและบันทึก" : "เริ่มอัดเสียง")
+        .accessibilityLabel(isRecording ? "Stop and save" : "Start recording")
         .sensoryFeedback(.impact, trigger: isRecording)
     }
 }
