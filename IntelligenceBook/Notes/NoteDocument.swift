@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Semantic colour roles from the vault's Theme notes:
-/// source=blue, AI insight=purple, highlight=yellow, definition=teal, review=orange, success=green, error=red.
+/// Brand accent is yellow (like Apple Notes). source=blue, summary=yellow, definition=teal, tip=orange, question=pink, success=green, error=red.
 enum CalloutKind: String, CaseIterable {
     case summary, definition, tip, question, example, warning, quote, note
 
@@ -21,10 +21,10 @@ enum CalloutKind: String, CaseIterable {
 
     var color: Color {
         switch self {
-        case .summary: .purple
+        case .summary: .yellow
         case .definition: .teal
-        case .tip: .yellow
-        case .question: .orange
+        case .tip: .orange
+        case .question: .pink
         case .example: .green
         case .warning: .red
         case .quote: .gray
@@ -34,10 +34,10 @@ enum CalloutKind: String, CaseIterable {
 
     var hex: String {
         switch self {
-        case .summary: "#AF52DE"
+        case .summary: "#FFCC00"
         case .definition: "#30B0C7"
-        case .tip: "#FFCC00"
-        case .question: "#FF9500"
+        case .tip: "#FF9500"
+        case .question: "#FF2D55"
         case .example: "#34C759"
         case .warning: "#FF3B30"
         case .quote: "#8E8E93"

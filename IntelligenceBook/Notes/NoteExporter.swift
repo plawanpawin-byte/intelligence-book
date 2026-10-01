@@ -194,7 +194,7 @@ enum NoteHTML {
                 case .callout(let kind, let title, let children):
                     html += """
                     <div class="callout" style="border-color:\(kind.hex); background:\(kind.hex)1F">\
-                    <div class="callout-title" style="color:\(kind == .tip ? "#9A7B00" : kind.hex)">\(inline(title.isEmpty ? kind.defaultTitle : title))</div>\
+                    <div class="callout-title" style="color:\(kind == .summary ? "#9A7B00" : kind.hex)">\(inline(title.isEmpty ? kind.defaultTitle : title))</div>\
                     \(render(children))</div>
                     """
                 case .code(_, let code): html += "<pre>\(escape(code))</pre>"

@@ -18,44 +18,42 @@ struct LibraryView: View {
         }
     }
 
+    @State private var request: SourceKind?
+    @State private var pendingNotebook: Notebook?
+    @State private var autoGenerateIDs: Set<UUID> = []
+
     var body: some View {
         NavigationStack(path: $path) {
-            List {
-                let pinned = filtered.filter(\.isPinned)
-                if !pinned.isEmpty {
-                    Section("ปักหมุด") {
-                        ForEach(pinned) { row($0) }
-                    }
-                }
-                Section(pinned.isEmpty ? "ล่าสุด" : "ทั้งหมด") {
-                    ForEach(filtered.filter { !$0.isPinned }) { row($0) }
+            Group {
+                if #available(iOS 26.0, *) {
+                    notebookList
+                        .toolbar {
+                            DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                            ToolbarSpacer(.flexible, placement: .bottomBar)
+                            ToolbarItem(placement: .bottomBar) { composeMenu }
+                        }
+                } else {
+                    notebookList
+                        .toolbar {
+                            ToolbarItemGroup(placement: .bottomBar) {
+                                Spacer()
+                                composeMenu
+                            }
+                        }
                 }
             }
-            .listStyle(.insetGrouped)
             .navigationTitle("IntelligenceBook")
-            .searchable(text: $search, prompt: "ค้นหาสมุด โน้ต หรือแหล่งข้อมูล")
-            .overlay {
-                if notebooks.isEmpty {
-                    ContentUnavailableView {
-                        Label("ยังไม่มีสมุดโน้ต", systemImage: "books.vertical")
-                    } description: {
-                        Text("สร้างสมุด แล้วโยน PDF ลิงก์ YouTube ข้อความ หรือเสียง ให้ AI สรุปเป็นโน้ต")
-                    } actions: {
-                        Button("สร้างสมุดโน้ต", action: createNotebook)
-                            .buttonStyle(.borderedProminent)
-                    }
-                } else if filtered.isEmpty {
-                    ContentUnavailableView.search(text: search)
-                }
+            .searchable(text: $search, prompt: "ค้นหา")
+            .navigationDestination(for: Notebook.self) { notebook in
+                NotebookView(notebook: notebook, autoGenerate: autoGenerateIDs.contains(notebook.uuid))
             }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: createNotebook) {
-                        Label("สมุดใหม่", systemImage: "square.and.pencil")
-                    }
+            .sourceImporter(request: $request, notebook: notebookForNewSource) { source in
+                if let notebook = source.notebook, path.last != notebook {
+                    autoGenerateIDs.insert(notebook.uuid)
+                    path.append(notebook)
                 }
+                pendingNotebook = nil
             }
-            .navigationDestination(for: Notebook.self) { NotebookView(notebook: $0) }
             .alert("เปลี่ยนชื่อสมุด", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("ชื่อสมุด", text: $renameText)
                 Button("ยกเลิก", role: .cancel) { renaming = nil }
@@ -65,6 +63,59 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    private var notebookList: some View {
+        List {
+            let pinned = filtered.filter(\.isPinned)
+            if !pinned.isEmpty {
+                Section("ปักหมุด") {
+                    ForEach(pinned) { row($0) }
+                }
+            }
+            if !filtered.isEmpty {
+                Section(pinned.isEmpty ? "ล่าสุด" : "ทั้งหมด") {
+                    ForEach(filtered.filter { !$0.isPinned }) { row($0) }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .overlay {
+            if notebooks.isEmpty {
+                ContentUnavailableView {
+                    Label("ยังไม่มีโน้ต", systemImage: "books.vertical")
+                } description: {
+                    Text("แตะปุ่ม \(Image(systemName: "square.and.pencil")) เพื่อโยน PDF ลิงก์ YouTube ข้อความ หรือเสียง ให้ AI สรุปเป็นโน้ต")
+                }
+            } else if filtered.isEmpty {
+                ContentUnavailableView.search(text: search)
+            }
+        }
+    }
+
+    /// The compose button in the bottom dock: start a notebook from any kind of source.
+    private var composeMenu: some View {
+        Menu {
+            Section("สร้างโน้ตจาก") {
+                ForEach(SourceKind.allCases) { kind in
+                    Button { request = kind } label: { Label(kind.addLabel, systemImage: kind.symbol) }
+                }
+            }
+            Button(action: createNotebook) {
+                Label("สมุดเปล่า", systemImage: "book.closed")
+            }
+        } label: {
+            Label("สร้าง", systemImage: "square.and.pencil")
+        }
+        .accessibilityLabel("สร้างโน้ตใหม่")
+    }
+
+    private func notebookForNewSource() -> Notebook {
+        if let pendingNotebook { return pendingNotebook }
+        let notebook = Notebook(title: "สมุดใหม่ \(Date().formatted(date: .abbreviated, time: .shortened))")
+        modelContext.insert(notebook)
+        pendingNotebook = notebook
+        return notebook
     }
 
     private func row(_ notebook: Notebook) -> some View {

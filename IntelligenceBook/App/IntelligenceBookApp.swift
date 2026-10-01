@@ -13,27 +13,12 @@ struct IntelligenceBookApp: App {
 
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var tab: AppTab = .library
-
-    enum AppTab: Hashable { case library, create, settings }
 
     var body: some View {
-        TabView(selection: $tab) {
-            LibraryView()
-                .tabItem { Label("คลังโน้ต", systemImage: "books.vertical") }
-                .tag(AppTab.library)
-
-            CreateView()
-                .tabItem { Label("สร้าง", systemImage: "plus.circle") }
-                .tag(AppTab.create)
-
-            SettingsView()
-                .tabItem { Label("ตั้งค่า", systemImage: "gearshape") }
-                .tag(AppTab.settings)
-        }
-        .task {
-            SourceProcessor.shared.resumePending(in: modelContext)
-        }
+        LibraryView()
+            .tint(.accentColor)
+            .task {
+                SourceProcessor.shared.resumePending(in: modelContext)
+            }
     }
 }

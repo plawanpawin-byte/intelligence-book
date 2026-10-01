@@ -23,7 +23,14 @@ enum SpeechLocale: String, CaseIterable, Identifiable {
 
     static let storageKey = "speechLocale"
     static var current: SpeechLocale {
-        SpeechLocale(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .thai
+        if let saved = UserDefaults.standard.string(forKey: storageKey), let locale = SpeechLocale(rawValue: saved) {
+            return locale
+        }
+        let language = Locale.preferredLanguages.first ?? "th"
+        if language.hasPrefix("en") { return .english }
+        if language.hasPrefix("ja") { return .japanese }
+        if language.hasPrefix("zh") { return .chinese }
+        return .thai
     }
 }
 

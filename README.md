@@ -2,7 +2,7 @@
 
 แอป iOS แนว NotebookLM: โยน **PDF · ลิงก์เว็บ · YouTube · ข้อความ · ไฟล์เสียง · อัดเสียงสด** แล้วให้ **Llama 3.2 ที่รันบนเครื่อง** สรุปเป็นโน้ตที่อ่านง่าย มีไฮไลท์ กล่องสี (callout) โค้ด และตาราง จากนั้นถามว่าจะแชร์ไปไหน — Obsidian, Canva, Notes หรือแผ่นแชร์ของ iOS
 
-UI เป็น SwiftUI แบบ Apple native (TabView, NavigationStack, List/Form, sheets, share sheet, SF Symbols, semantic colors, Dynamic Type, Light/Dark)
+UI เป็น SwiftUI แบบ Apple native (หน้าเดียวแบบแอป Notes: ค้นหา + ปุ่มสร้างใน dock ล่าง, NavigationStack, List/Form, sheets, share sheet, SF Symbols, semantic colors, Dynamic Type, Light/Dark)
 
 ## ฟีเจอร์
 
@@ -22,12 +22,12 @@ UI เป็น SwiftUI แบบ Apple native (TabView, NavigationStack, List/F
 
 ```markdown
 # หัวเรื่อง
-> [!summary] สรุปสั้น        ← ม่วง (AI insight)
+> [!summary] สรุปสั้น        ← เหลือง (สีหลักของแอป)
 > ...
 - ประเด็นที่มี ==ไฮไลท์== และ **คำสำคัญ**
 > [!definition] คำศัพท์      ← เขียวอมฟ้า
-> [!tip] ประเด็นสำคัญ        ← เหลือง
-> [!question] คำถามทบทวน     ← ส้ม
+> [!tip] ประเด็นสำคัญ        ← ส้ม
+> [!question] คำถามทบทวน     ← ชมพู
 > [!warning] ข้อควรระวัง     ← แดง
 ```
 

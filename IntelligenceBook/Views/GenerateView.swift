@@ -146,7 +146,7 @@ struct GenerateView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Label("สร้างโดย AI (\(DeviceProfile.selected.displayName)) — ตรวจทานก่อนนำไปใช้", systemImage: "sparkles")
                     .font(.footnote)
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(.tint)
                 NoteContentView(markdown: job.output)
             }
             .padding()

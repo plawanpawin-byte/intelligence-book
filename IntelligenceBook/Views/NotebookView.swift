@@ -105,6 +105,7 @@ struct NotebookView: View {
             } label: {
                 Label("สร้างโน้ตด้วย AI", systemImage: "sparkles")
                     .font(.headline)
+                    .foregroundStyle(hasReadySource ? Color.black : Color.secondary)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -130,7 +131,7 @@ struct NoteRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: note.style.symbol)
-                .foregroundStyle(.purple)
+                .foregroundStyle(.tint)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 3) {
                 Text(note.title).font(.body.weight(.medium)).lineLimit(2)
