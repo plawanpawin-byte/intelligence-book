@@ -68,6 +68,8 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/IntelligenceBook.xcarchive/Products/Applications/IntelligenceBook.app Payload/
+          echo "Metal libraries in app:"; find Payload -name "*.metallib" | tee metallibs.txt
+          if [ ! -s metallibs.txt ]; then echo "::error::MLX metallib missing — model would crash at runtime"; exit 1; fi
           zip -qry IntelligenceBook-unsigned.ipa Payload
           ls -lh IntelligenceBook-unsigned.ipa
 
