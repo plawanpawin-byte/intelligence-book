@@ -52,9 +52,9 @@ private struct SourceImportModifier: ViewModifier {
                         add(Source(kind: .text, title: title, text: text))
                     }
                 case .recording:
-                    RecorderSheet { fileName, duration in
+                    RecorderSheet { fileName, duration, transcript in
                         let title = "บันทึกเสียง \(Date().formatted(date: .abbreviated, time: .shortened)) (\(duration.clockString))"
-                        add(Source(kind: .recording, title: title, fileName: fileName))
+                        add(Source(kind: .recording, title: title, text: transcript ?? "", fileName: fileName))
                     }
                 default:
                     EmptyView()
@@ -207,9 +207,10 @@ struct TextEntrySheet: View {
 // MARK: - Recorder
 
 struct RecorderSheet: View {
-    let onFinish: (String, TimeInterval) -> Void
+    let onFinish: (String, TimeInterval, String?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var recorder = AudioRecorder()
+    @State private var finishing = false
     @State private var permissionDenied = false
     @State private var errorText: String?
 
@@ -284,7 +285,11 @@ struct RecorderSheet: View {
         if let errorText { return errorText }
         switch recorder.state {
         case .idle: return "แตะปุ่มสีแดงเพื่อเริ่มอัด"
-        case .recording: return "กำลังอัด…"
+        case .recording:
+            if finishing { return "กำลังเก็บข้อความที่ถอดไว้…" }
+            return recorder.transcribedPieces > 0
+                ? "กำลังอัด… ถอดเสียงไปแล้ว \(recorder.transcribedPieces) ช่วง · ล็อกจอได้"
+                : "กำลังอัด… ล็อกจอได้ เสียงยังอัดต่อ"
         case .paused: return "หยุดชั่วคราว"
         }
     }
@@ -296,7 +301,7 @@ struct RecorderSheet: View {
                 return
             }
             do {
-                try recorder.start()
+                try await recorder.start()
             } catch {
                 errorText = error.localizedDescription
             }
@@ -305,9 +310,12 @@ struct RecorderSheet: View {
 
     private func finish() {
         let duration = recorder.elapsed
-        guard let name = recorder.stop() else { return }
-        onFinish(name, duration)
-        dismiss()
+        finishing = true
+        Task {
+            guard let result = await recorder.stop() else { finishing = false; return }
+            onFinish(result.fileName, duration, result.transcript)
+            dismiss()
+        }
     }
 }
 

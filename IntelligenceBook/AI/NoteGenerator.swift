@@ -44,6 +44,7 @@ enum Prompts {
     - Use "- [ ] " for action items.
     - Use a Markdown table only when comparing things.
     - Never invent facts that are not in the source. If something is unclear, say so in a warning callout.
+    - Write each fact ONCE. Never repeat a sentence, bullet or section.
     - Output only the note. No preamble, no closing remarks.
     """
 
@@ -52,6 +53,14 @@ enum Prompts {
         You are IntelligenceBook, an expert note-taker. You turn source material into clear, well-structured, \
         colourful study notes that are easy to read and faithful to the source.
         \(language.instruction)
+
+        FAITHFULNESS (most important):
+        - Summarise ONLY what is written or said inside <content> … </content>.
+        - The source name and type (e.g. "อัดเสียง", "PDF", "YouTube") are labels, NOT content. \
+        Never write about what a recording, file or link is.
+        - Timestamps like [00:12] only mark time; ignore them.
+        - Speech transcripts can contain small recognition errors; keep the speaker's meaning.
+        - If the content is short, the note must be short. Do not pad it with general knowledge.
 
         \(syntaxGuide)
         """
@@ -85,9 +94,25 @@ enum Prompts {
         }
     }
 
+    /// Short sources get a short note: the full template makes small models invent filler.
+    static func shortTask(characters: Int) -> String {
+        if characters < 600 {
+            return """
+            The content is very short. Create a SHORT note: a "# " title, one summary callout with 1–2 sentences, \
+            then only the points actually stated in the content as 1–5 bullets. \
+            Do NOT add definitions, questions, sections or anything not stated.
+            """
+        }
+        return """
+        The content is short. Create a compact note: title, summary callout, then at most 2 short sections \
+        with bullets of what the content actually says. Add a definition or question callout only if the content supports it.
+        """
+    }
+
     static let extractorSystem = """
-    You extract the important information from a part of a longer document. Output 5–10 concise bullet points ("- ") \
-    with the key facts, definitions, numbers, names and arguments. Keep the original language of the text. \
+    You extract the important information from a part of a longer document or lecture transcript (inside <content>). \
+    Output 4–8 concise bullet points ("- ") with the key facts, definitions, numbers, names and arguments. \
+    Keep the original language of the text. Ignore timestamps. Each point once, no repetition. \
     Do not add anything that is not in the text. Output only the bullets.
     """
 }
@@ -108,12 +133,16 @@ final class GenerationJob {
     var phase: Phase = .preparing
     var output: String = ""
     var progress: Double = 0
+    /// Estimated seconds left while reading a long source.
+    var remaining: TimeInterval?
 
     var phaseText: String {
         switch phase {
         case .preparing: return "กำลังเตรียมแหล่งข้อมูล"
-        case .loadingModel: return "กำลังเตรียม Apple Intelligence"
-        case .reading(let i, let n): return "กำลังอ่านส่วนที่ \(i) จาก \(n)"
+        case .loadingModel: return LLMService.shared.statusText
+        case .reading(let i, let n):
+            if let remaining, remaining > 60 { return "กำลังอ่านส่วนที่ \(i) จาก \(n) · เหลืออีกราว \(Int(remaining / 60) + 1) นาที" }
+            return "กำลังอ่านส่วนที่ \(i) จาก \(n)"
         case .writing: return "กำลังเขียนโน้ต"
         case .done: return "เสร็จแล้ว"
         case .failed(let m): return m
@@ -128,16 +157,18 @@ final class GenerationJob {
 
     func run(sources: [SourceInput], style: NoteStyle, language: OutputLanguage) async {
         let llm = LLMService.shared
+        let variant = DeviceProfile.selected
         output = ""
         progress = 0
 
         do {
             phase = .loadingModel
-            guard llm.isAvailable else { throw AppError.message(llm.statusText) }
+            _ = try await llm.ensureLoaded()
 
-            let budget = LLMService.chunkCharacters
+            let budget = variant.chunkCharacters
+            let contentLength = sources.reduce(0) { $0 + $1.text.count }
             let fullCorpus = sources.enumerated().map { index, source in
-                "### แหล่งที่ \(index + 1): \(source.title) (\(source.kind.label))\n\(source.text)"
+                GenerationJob.wrap(source, index: index)
             }.joined(separator: "\n\n")
 
             var material = fullCorpus
@@ -147,29 +178,24 @@ final class GenerationJob {
 
             phase = .writing
             progress = 0.9
-            // If the 4K window still overflows, retry with less material.
-            var note = ""
-            var attempt = material
-            while true {
-                do {
-                    note = try await llm.generate(
-                        system: Prompts.system(language: language),
-                        prompt: """
-                        \(Prompts.task(for: style))
+            let task = contentLength < 2_500 ? Prompts.shortTask(characters: contentLength) : Prompts.task(for: style)
+            let maxTokens: Int
+            switch contentLength {
+            case ..<600: maxTokens = 320
+            case ..<2_500: maxTokens = 700
+            default: maxTokens = variant.maxOutputTokens
+            }
+            let note = try await llm.generate(
+                system: Prompts.system(language: language),
+                prompt: """
+                \(task)
 
-                        SOURCE MATERIAL:
-                        \"\"\"
-                        \(attempt)
-                        \"\"\"
-                        """,
-                        maxTokens: LLMService.noteMaxTokens
-                    ) { [weak self] partial in
-                        self?.output = partial
-                    }
-                    break
-                } catch LLMError.contextTooLong where attempt.count > 800 {
-                    attempt = String(attempt.prefix(attempt.count * 2 / 3))
-                }
+                SOURCE:
+                \(material)
+                """,
+                maxTokens: maxTokens
+            ) { [weak self] partial in
+                self?.output = partial
             }
             output = NoteCleaner.clean(note)
             progress = 1
@@ -181,27 +207,14 @@ final class GenerationJob {
         }
     }
 
-    /// Extracts key bullets from one piece of text, shrinking it if the context window overflows.
-    private func digest(_ text: String, header: String, stream: Bool) async throws -> String {
-        var piece = text
-        while true {
-            do {
-                return try await LLMService.shared.generate(
-                    system: Prompts.extractorSystem,
-                    prompt: "\(header)TEXT:\n\(piece)",
-                    maxTokens: LLMService.digestMaxTokens,
-                    temperature: 0.2
-                ) { [weak self] partial in
-                    if stream { self?.output = partial }
-                }
-            } catch LLMError.contextTooLong where piece.count > 600 {
-                piece = String(piece.prefix(piece.count * 2 / 3))
-            }
-        }
+    /// Source label outside the content tags so the model doesn't summarise the label itself.
+    static func wrap(_ source: SourceInput, index: Int) -> String {
+        "[แหล่งที่ \(index + 1) · ชื่อ: \(source.title)]\n<content>\n\(source.text)\n</content>"
     }
 
     /// Map step: compress each chunk into bullets, repeated until everything fits the budget.
     private func condense(sources: [SourceInput], budget: Int) async throws -> String {
+        let llm = LLMService.shared
         var chunks: [(title: String, text: String)] = []
         for source in sources {
             for piece in TextChunker.split(source.text, maxCharacters: budget) {
@@ -209,36 +222,54 @@ final class GenerationJob {
             }
         }
 
-        // Keep runtime bounded on very long material: sample evenly.
-        let maxChunks = 30
+        // Keep runtime bounded on very long material (2–3 h lectures): sample evenly.
+        let maxChunks = 24
         if chunks.count > maxChunks {
             let step = Double(chunks.count) / Double(maxChunks)
             chunks = (0..<maxChunks).map { chunks[Int(Double($0) * step)] }
         }
 
-        var digests: [String] = []
+        let started = Date()
+        var digest: [String] = []
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
             phase = .reading(index + 1, chunks.count)
             progress = 0.85 * Double(index) / Double(chunks.count)
-            let bullets = try await digest(chunk.text, header: "แหล่ง: \(chunk.title)\n\n", stream: true)
-            digests.append("### \(chunk.title) — ส่วนที่ \(index + 1)\n\(bullets)")
+            if index > 0 {
+                let perChunk = Date().timeIntervalSince(started) / Double(index)
+                remaining = perChunk * Double(chunks.count - index + 2)
+            }
+            let bullets = try await llm.generate(
+                system: Prompts.extractorSystem,
+                prompt: "<content>\n\(chunk.text)\n</content>",
+                maxTokens: 280,
+                temperature: 0.2
+            ) { [weak self] partial in
+                self?.output = partial
+            }
+            digest.append("ส่วนที่ \(index + 1):\n\(bullets)")
         }
+        remaining = nil
 
-        var joined = digests.joined(separator: "\n\n")
+        var joined = digest.joined(separator: "\n\n")
         var rounds = 0
-        while joined.count > budget && rounds < 3 {
+        while joined.count > budget && rounds < 2 {
             rounds += 1
             let groups = TextChunker.split(joined, maxCharacters: budget)
             var reduced: [String] = []
             for (index, group) in groups.enumerated() {
                 try Task.checkCancellation()
                 phase = .reading(index + 1, groups.count)
-                reduced.append(try await digest(group, header: "", stream: false))
+                reduced.append(try await llm.generate(
+                    system: Prompts.extractorSystem,
+                    prompt: "<content>\n\(group)\n</content>",
+                    maxTokens: 350,
+                    temperature: 0.2
+                ))
             }
             joined = reduced.joined(separator: "\n\n")
         }
-        return String(joined.prefix(budget))
+        return "<content>\n\(String(joined.prefix(budget)))\n</content>"
     }
 }
 

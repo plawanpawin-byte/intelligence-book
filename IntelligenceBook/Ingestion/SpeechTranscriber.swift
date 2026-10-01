@@ -131,3 +131,111 @@ enum SpeechTranscriber {
         }
     }
 }
+
+/// Transcribes microphone audio while it is being recorded, restarting the recognizer every ~50 s
+/// (Apple's per-request limit). Thread-safe: `append` is called from the audio thread.
+final class LiveTranscriber: @unchecked Sendable {
+    private let recognizer: SFSpeechRecognizer?
+    private let sampleRate: Double
+    private let segmentFrames: AVAudioFramePosition
+    private let lock = NSLock()
+
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var tasks: [SFSpeechRecognitionTask] = []
+    private var frames: AVAudioFramePosition = 0
+    private var segmentStart: AVAudioFramePosition = 0
+    private var nextIndex = 0
+    private var texts: [Int: (start: Double, text: String)] = [:]
+    private var done: Set<Int> = []
+    private var cancelled = false
+
+    init(locale: SpeechLocale, sampleRate: Double) {
+        let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale.rawValue))
+        recognizer?.queue = OperationQueue()
+        self.recognizer = (recognizer?.isAvailable ?? false) ? recognizer : nil
+        self.sampleRate = sampleRate
+        self.segmentFrames = AVAudioFramePosition(sampleRate * 50)
+    }
+
+    var finishedPieces: Int {
+        lock.lock(); defer { lock.unlock() }
+        return done.count
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        guard let recognizer else { return }
+        lock.lock()
+        if cancelled { lock.unlock(); return }
+        if request == nil { startSegment(recognizer) }
+        let current = request
+        frames += AVAudioFramePosition(buffer.frameLength)
+        let rollOver = frames - segmentStart >= segmentFrames
+        if rollOver { request = nil }
+        lock.unlock()
+
+        current?.append(buffer)
+        if rollOver { current?.endAudio() }
+    }
+
+    /// Must be called with the lock held.
+    private func startSegment(_ recognizer: SFSpeechRecognizer) {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.addsPunctuation = true
+        request.taskHint = .dictation
+        if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+        let index = nextIndex
+        nextIndex += 1
+        segmentStart = frames
+        texts[index] = (Double(frames) / sampleRate, "")
+        self.request = request
+        let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            if let result {
+                texts[index]?.text = result.bestTranscription.formattedString
+                if result.isFinal { done.insert(index) }
+            }
+            if error != nil { done.insert(index) }
+        }
+        tasks.append(task)
+    }
+
+    /// Ends the last piece and waits (up to ~20 s) for pending pieces, then returns the timestamped transcript.
+    func finish() async -> String? {
+        lock.lock()
+        let last = request
+        request = nil
+        lock.unlock()
+        last?.endAudio()
+
+        guard recognizer != nil else { return nil }
+        for _ in 0..<100 {
+            lock.lock()
+            let pending = nextIndex - done.count
+            lock.unlock()
+            if pending <= 0 { break }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+
+        lock.lock()
+        let pieces = texts.sorted { $0.key < $1.key }.map { $0.value }
+        lock.unlock()
+        let lines = pieces.compactMap { piece -> String? in
+            let text = piece.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return "[\(YouTubeTranscript.timestamp(ms: Int(piece.start * 1000)))] \(text)"
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let all = tasks
+        request = nil
+        lock.unlock()
+        all.forEach { $0.cancel() }
+    }
+}

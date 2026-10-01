@@ -38,10 +38,18 @@ struct GenerateView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .interactiveDismissDisabled(stage == .running)
+        // MLX needs the GPU, which iOS takes away in the background: keep the screen on while writing.
+        .onChange(of: stage) { _, newStage in
+            UIApplication.shared.isIdleTimerDisabled = newStage == .running
+        }
         .onAppear {
+            LLMService.shared.prewarm()
             if selected.isEmpty { selected = Set(notebook.readySources.map(\.uuid)) }
         }
-        .onDisappear { task?.cancel() }
+        .onDisappear {
+            task?.cancel()
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
     }
 
     // MARK: Configure
@@ -92,14 +100,14 @@ struct GenerateView: View {
                 Picker("ภาษาโน้ต", selection: $languageRaw) {
                     ForEach(OutputLanguage.allCases) { Text($0.label).tag($0.rawValue) }
                 }
-                LabeledContent("โมเดล", value: LLMService.displayName)
+                LabeledContent("โมเดล", value: DeviceProfile.selected.displayName)
             } header: {
                 Text("AI บนเครื่อง")
             } footer: {
-                if LLMService.shared.isAvailable {
-                    Text("ประมวลผลบนเครื่องด้วย Apple Intelligence ข้อมูลไม่ถูกส่งออกไปไหน\(LLMService.shared.supportsCurrentLanguage ? "" : " · หมายเหตุ: Apple Intelligence ยังไม่รองรับภาษาของเครื่องนี้ (รวมถึงภาษาไทย) ถ้าสรุปไม่ได้ให้เลือกภาษาโน้ตเป็น English")")
+                if !DeviceProfile.isDownloaded(DeviceProfile.selected) {
+                    Text("ครั้งแรกจะดาวน์โหลด \(DeviceProfile.selected.displayName) \(DeviceProfile.selected.downloadSize) (แนะนำให้ใช้ Wi-Fi) หลังจากนั้นทำงานออฟไลน์ได้")
                 } else {
-                    Text(LLMService.shared.statusText).foregroundStyle(.red)
+                    Text("ประมวลผลบนเครื่องทั้งหมด ข้อมูลไม่ถูกส่งออกไปไหน")
                 }
             }
         }
@@ -112,11 +120,18 @@ struct GenerateView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    ProgressView(value: job.progress)
+                    if case .loadingModel = job.phase, case .downloading(let p) = LLMService.shared.state {
+                        ProgressView(value: p)
+                    } else {
+                        ProgressView(value: job.progress)
+                    }
                     Label(job.phaseText, systemImage: "sparkles")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .contentTransition(.opacity)
+                    Text("เปิดแอปค้างไว้ระหว่างสรุป หน้าจอจะไม่ดับเอง (iOS หยุดการประมวลผล AI เมื่อออกจากแอป)")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
                 .padding(.bottom, 4)
 
@@ -140,7 +155,7 @@ struct GenerateView: View {
     private var reviewView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Label("สร้างโดย AI (\(LLMService.displayName)) — ตรวจทานก่อนนำไปใช้", systemImage: "sparkles")
+                Label("สร้างโดย AI (\(DeviceProfile.selected.displayName)) — ตรวจทานก่อนนำไปใช้", systemImage: "sparkles")
                     .font(.footnote)
                     .foregroundStyle(.tint)
                 NoteContentView(markdown: job.output)
@@ -177,7 +192,7 @@ struct GenerateView: View {
         ToolbarItem(placement: .confirmationAction) {
             switch stage {
             case .configure:
-                Button("สร้าง", action: start).disabled(selected.isEmpty || !LLMService.shared.isAvailable)
+                Button("สร้าง", action: start).disabled(selected.isEmpty)
             case .running:
                 EmptyView()
             case .review:
@@ -209,7 +224,7 @@ struct GenerateView: View {
             title: NoteCleaner.title(from: markdown, fallback: "\(style.title) — \(notebook.title)"),
             markdown: markdown,
             style: style,
-            modelName: LLMService.displayName,
+            modelName: DeviceProfile.selected.displayName,
             sourceTitles: chosenSources.map(\.title)
         )
         modelContext.insert(note)

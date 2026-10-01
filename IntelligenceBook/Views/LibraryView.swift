@@ -7,10 +7,10 @@ import PDFKit
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Notebook.updatedAt, order: .reverse) private var notebooks: [Notebook]
-    @Environment(\.openURL) private var openURL
 
     @State private var search = ""
-    @State private var path: [Notebook] = []
+    /// NavigationPath (not [Notebook]) so notebooks can push notes and sources too.
+    @State private var path = NavigationPath()
     @State private var renaming: Notebook?
     @State private var renameText = ""
 
@@ -51,7 +51,7 @@ struct LibraryView: View {
                     NotebookView(notebook: notebook, autoGenerate: autoGenerateIDs.contains(notebook.uuid))
                 }
                 .sourceImporter(request: $request, notebook: notebookForNewSource) { source in
-                    if let notebook = source.notebook, path.last != notebook {
+                    if let notebook = source.notebook, path.isEmpty {
                         autoGenerateIDs.insert(notebook.uuid)
                         path.append(notebook)
                     }
@@ -160,22 +160,17 @@ struct LibraryView: View {
                 Button(role: .destructive) { beginSelection(.delete) } label: { Label("ลบโน้ต", systemImage: "trash") }
                     .disabled(notebooks.isEmpty)
                 Menu {
-                    Section(LLMService.shared.statusText) {
+                    Section(DeviceProfile.isDownloaded(DeviceProfile.selected)
+                            ? "ดาวน์โหลดแล้ว · ประมวลผลบนเครื่อง"
+                            : "จะดาวน์โหลด \(DeviceProfile.selected.downloadSize) ตอนสร้างโน้ตครั้งแรก") {
                         Button {} label: {
-                            Label(LLMService.displayName, systemImage: LLMService.shared.isAvailable ? "checkmark" : "exclamationmark.triangle")
+                            Label(DeviceProfile.selected.displayName, systemImage: "checkmark")
                         }
                         .disabled(true)
                     }
-                    if !LLMService.shared.isAvailable {
-                        Button {
-                            if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
-                        } label: {
-                            Label("เปิดการตั้งค่า", systemImage: "gear")
-                        }
-                    }
                 } label: {
-                    Label("โมเดล AI", systemImage: "apple.intelligence")
-                    Text(LLMService.displayName)
+                    Label("โมเดล AI", systemImage: "cpu")
+                    Text(DeviceProfile.selected.displayName)
                 }
                 Section {
                     Text("เวอร์ชัน \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")

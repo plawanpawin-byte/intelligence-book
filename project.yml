@@ -2,8 +2,22 @@ name: IntelligenceBook
 options:
   bundleIdPrefix: com.plawan
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "17.0"
   createIntermediateGroups: true
+
+packages:
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: 3.32.3
+  mlx-swift:
+    url: https://github.com/ml-explore/mlx-swift
+    from: 0.32.3
+  swift-huggingface:
+    url: https://github.com/huggingface/swift-huggingface
+    from: 0.9.0
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
 
 targets:
   IntelligenceBook:
@@ -11,6 +25,19 @@ targets:
     platform: iOS
     sources:
       - path: IntelligenceBook
+    dependencies:
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXHuggingFace
+      - package: mlx-swift
+        product: MLX
+      - package: swift-huggingface
+        product: HuggingFace
+      - package: swift-transformers
+        product: Tokenizers
     info:
       path: IntelligenceBook/Info.plist
       properties:
@@ -32,6 +59,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: IntelligenceBook ใช้ไมโครโฟนเพื่ออัดเสียงบรรยายหรือการประชุมแล้วสรุปเป็นโน้ต
         NSSpeechRecognitionUsageDescription: IntelligenceBook แปลงเสียงที่อัดหรือไฟล์เสียงเป็นข้อความเพื่อนำไปสรุป
+        UIBackgroundModes: [audio]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: false
     settings:

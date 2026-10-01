@@ -10,6 +10,8 @@ final class SourceProcessor {
     private init() {}
 
     func process(_ source: Source) {
+        // Load the model while the source is being read, so writing starts right away.
+        LLMService.shared.prewarm()
         tasks[source.uuid]?.cancel()
         tasks[source.uuid] = Task { [weak self] in
             await self?.run(source)
@@ -56,6 +58,9 @@ final class SourceProcessor {
 
             case .text:
                 break
+
+            case .recording where !source.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                break // already transcribed live while recording
 
             case .audio, .recording:
                 guard let url = source.fileURL else { throw AppError.message("ไม่พบไฟล์เสียง") }

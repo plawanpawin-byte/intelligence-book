@@ -28,6 +28,9 @@ jobs:
           sudo xcode-select -s "$XC/Contents/Developer"
           xcodebuild -version
 
+      - name: Install Metal toolchain (needed by MLX shaders)
+        run: xcodebuild -downloadComponent MetalToolchain || true
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -66,6 +69,8 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/IntelligenceBook.xcarchive/Products/Applications/IntelligenceBook.app Payload/
+          echo "Metal libraries in app:"; find Payload -name "*.metallib" | tee metallibs.txt
+          if [ ! -s metallibs.txt ]; then echo "::error::MLX metallib missing — model would crash at runtime"; exit 1; fi
           zip -qry IntelligenceBook-unsigned.ipa Payload
           /usr/libexec/PlistBuddy -c 'Print CFBundleVersion' Payload/IntelligenceBook.app/Info.plist
           ls -lh IntelligenceBook-unsigned.ipa
