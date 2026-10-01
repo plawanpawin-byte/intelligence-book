@@ -112,7 +112,7 @@ final class GenerationJob {
     var phaseText: String {
         switch phase {
         case .preparing: return "กำลังเตรียมแหล่งข้อมูล"
-        case .loadingModel: return LLMService.shared.statusText
+        case .loadingModel: return "กำลังเตรียม Apple Intelligence"
         case .reading(let i, let n): return "กำลังอ่านส่วนที่ \(i) จาก \(n)"
         case .writing: return "กำลังเขียนโน้ต"
         case .done: return "เสร็จแล้ว"
@@ -128,15 +128,14 @@ final class GenerationJob {
 
     func run(sources: [SourceInput], style: NoteStyle, language: OutputLanguage) async {
         let llm = LLMService.shared
-        let variant = DeviceProfile.selected
         output = ""
         progress = 0
 
         do {
             phase = .loadingModel
-            _ = try await llm.ensureLoaded()
+            guard llm.isAvailable else { throw AppError.message(llm.statusText) }
 
-            let budget = variant.chunkCharacters
+            let budget = LLMService.chunkCharacters
             let fullCorpus = sources.enumerated().map { index, source in
                 "### แหล่งที่ \(index + 1): \(source.title) (\(source.kind.label))\n\(source.text)"
             }.joined(separator: "\n\n")
@@ -148,20 +147,29 @@ final class GenerationJob {
 
             phase = .writing
             progress = 0.9
-            let prompt = """
-            \(Prompts.task(for: style))
+            // If the 4K window still overflows, retry with less material.
+            var note = ""
+            var attempt = material
+            while true {
+                do {
+                    note = try await llm.generate(
+                        system: Prompts.system(language: language),
+                        prompt: """
+                        \(Prompts.task(for: style))
 
-            SOURCE MATERIAL:
-            \"\"\"
-            \(material)
-            \"\"\"
-            """
-            let note = try await llm.generate(
-                system: Prompts.system(language: language),
-                prompt: prompt,
-                maxTokens: variant.maxOutputTokens
-            ) { [weak self] partial in
-                self?.output = partial
+                        SOURCE MATERIAL:
+                        \"\"\"
+                        \(attempt)
+                        \"\"\"
+                        """,
+                        maxTokens: LLMService.noteMaxTokens
+                    ) { [weak self] partial in
+                        self?.output = partial
+                    }
+                    break
+                } catch LLMError.contextTooLong where attempt.count > 800 {
+                    attempt = String(attempt.prefix(attempt.count * 2 / 3))
+                }
             }
             output = NoteCleaner.clean(note)
             progress = 1
@@ -173,9 +181,27 @@ final class GenerationJob {
         }
     }
 
+    /// Extracts key bullets from one piece of text, shrinking it if the context window overflows.
+    private func digest(_ text: String, header: String, stream: Bool) async throws -> String {
+        var piece = text
+        while true {
+            do {
+                return try await LLMService.shared.generate(
+                    system: Prompts.extractorSystem,
+                    prompt: "\(header)TEXT:\n\(piece)",
+                    maxTokens: LLMService.digestMaxTokens,
+                    temperature: 0.2
+                ) { [weak self] partial in
+                    if stream { self?.output = partial }
+                }
+            } catch LLMError.contextTooLong where piece.count > 600 {
+                piece = String(piece.prefix(piece.count * 2 / 3))
+            }
+        }
+    }
+
     /// Map step: compress each chunk into bullets, repeated until everything fits the budget.
     private func condense(sources: [SourceInput], budget: Int) async throws -> String {
-        let llm = LLMService.shared
         var chunks: [(title: String, text: String)] = []
         for source in sources {
             for piece in TextChunker.split(source.text, maxCharacters: budget) {
@@ -184,43 +210,31 @@ final class GenerationJob {
         }
 
         // Keep runtime bounded on very long material: sample evenly.
-        let maxChunks = 24
+        let maxChunks = 30
         if chunks.count > maxChunks {
             let step = Double(chunks.count) / Double(maxChunks)
             chunks = (0..<maxChunks).map { chunks[Int(Double($0) * step)] }
         }
 
-        var digest: [String] = []
+        var digests: [String] = []
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
             phase = .reading(index + 1, chunks.count)
             progress = 0.85 * Double(index) / Double(chunks.count)
-            let bullets = try await llm.generate(
-                system: Prompts.extractorSystem,
-                prompt: "แหล่ง: \(chunk.title)\n\nTEXT:\n\(chunk.text)",
-                maxTokens: 400,
-                temperature: 0.2
-            ) { [weak self] partial in
-                self?.output = partial
-            }
-            digest.append("### \(chunk.title) — ส่วนที่ \(index + 1)\n\(bullets)")
+            let bullets = try await digest(chunk.text, header: "แหล่ง: \(chunk.title)\n\n", stream: true)
+            digests.append("### \(chunk.title) — ส่วนที่ \(index + 1)\n\(bullets)")
         }
 
-        var joined = digest.joined(separator: "\n\n")
+        var joined = digests.joined(separator: "\n\n")
         var rounds = 0
-        while joined.count > budget && rounds < 2 {
+        while joined.count > budget && rounds < 3 {
             rounds += 1
             let groups = TextChunker.split(joined, maxCharacters: budget)
             var reduced: [String] = []
             for (index, group) in groups.enumerated() {
                 try Task.checkCancellation()
                 phase = .reading(index + 1, groups.count)
-                reduced.append(try await llm.generate(
-                    system: Prompts.extractorSystem,
-                    prompt: "TEXT:\n\(group)",
-                    maxTokens: 450,
-                    temperature: 0.2
-                ))
+                reduced.append(try await digest(group, header: "", stream: false))
             }
             joined = reduced.joined(separator: "\n\n")
         }

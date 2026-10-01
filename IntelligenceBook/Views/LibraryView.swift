@@ -7,7 +7,7 @@ import PDFKit
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Notebook.updatedAt, order: .reverse) private var notebooks: [Notebook]
-    @AppStorage(DeviceProfile.preferenceKey) private var modelPreference = ModelPreference.auto.rawValue
+    @Environment(\.openURL) private var openURL
 
     @State private var search = ""
     @State private var path: [Notebook] = []
@@ -147,7 +147,7 @@ struct LibraryView: View {
 
     // MARK: Menus
 
-    /// Top-right ≡ button: pin notes, delete notes, choose the Llama model.
+    /// Top-right ≡ button: pin notes, delete notes, AI model (Apple Intelligence).
     @ViewBuilder
     private var topMenu: some View {
         if selectAction != nil {
@@ -159,15 +159,24 @@ struct LibraryView: View {
                     .disabled(notebooks.isEmpty)
                 Button(role: .destructive) { beginSelection(.delete) } label: { Label("ลบโน้ต", systemImage: "trash") }
                     .disabled(notebooks.isEmpty)
-                Picker(selection: $modelPreference) {
-                    ForEach(ModelPreference.allCases) { pref in
-                        Text(pref.menuTitle).tag(pref.rawValue)
+                Menu {
+                    Section(LLMService.shared.statusText) {
+                        Button {} label: {
+                            Label(LLMService.displayName, systemImage: LLMService.shared.isAvailable ? "checkmark" : "exclamationmark.triangle")
+                        }
+                        .disabled(true)
+                    }
+                    if !LLMService.shared.isAvailable {
+                        Button {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                        } label: {
+                            Label("เปิดการตั้งค่า", systemImage: "gear")
+                        }
                     }
                 } label: {
-                    Label("เลือกโมเดล", systemImage: "cpu")
-                    Text(DeviceProfile.selected.displayName)
+                    Label("โมเดล AI", systemImage: "apple.intelligence")
+                    Text(LLMService.displayName)
                 }
-                .pickerStyle(.menu)
             } label: {
                 Label("ตัวเลือก", systemImage: "line.3.horizontal.decrease")
             }
@@ -285,16 +294,6 @@ private extension View {
             toolbar(removing: .title)
         } else {
             self
-        }
-    }
-}
-
-private extension ModelPreference {
-    var menuTitle: String {
-        switch self {
-        case .auto: "อัตโนมัติ (\(DeviceProfile.recommended.displayName))"
-        case .b1: "Llama 3.2 1B — เร็ว"
-        case .b3: "Llama 3.2 3B — ฉลาดกว่า"
         }
     }
 }
