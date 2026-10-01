@@ -188,83 +188,199 @@ enum YouTubeTranscript {
         return nil
     }
 
-    private struct Track: Decodable {
-        let baseUrl: String
-        let languageCode: String
-        let kind: String?
-    }
+    private static let desktopUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+    private static let androidVersion = "20.10.38"
 
-    private struct Json3: Decodable {
-        struct Event: Decodable {
-            struct Seg: Decodable { let utf8: String? }
-            let tStartMs: Int?
-            let segs: [Seg]?
-        }
-        let events: [Event]?
-    }
-
+    /// Gets the transcript straight from YouTube, trying three independent routes:
+    /// 1. InnerTube player API as the Android app → caption track (same as youtube-transcript-api)
+    /// 2. The "Show transcript" panel API (get_transcript) the website uses
+    /// 3. Caption tracks embedded in the watch page
     static func fetch(_ raw: String) async throws -> (title: String, text: String) {
         guard let id = videoID(from: raw) else { throw AppError.message("ไม่พบรหัสวิดีโอ YouTube ในลิงก์นี้") }
-        let page = URL(string: "https://www.youtube.com/watch?v=\(id)&hl=th")!
-        let desktopUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
-        let html = try await WebExtractor.fetchHTML(page, userAgent: desktopUA)
-
+        let html = (try? await watchPage(id)) ?? ""
         let title = HTMLText.decodeEntities(
             HTMLText.firstMatch(html, "<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]*)\"")
                 ?? HTMLText.firstMatch(html, "<title[^>]*>(.*?)</title>")?.replacingOccurrences(of: " - YouTube", with: "")
                 ?? "YouTube \(id)"
         )
 
-        guard let tracksJSON = extractArray(after: "\"captionTracks\":", in: html),
-              let data = tracksJSON.data(using: .utf8),
-              let tracks = try? JSONDecoder().decode([Track].self, from: data),
-              !tracks.isEmpty else {
-            throw AppError.message("วิดีโอนี้ไม่มีคำบรรยาย (subtitle) ที่เข้าถึงได้ — คัดลอก transcript มาวางเป็น “ข้อความ” แทนได้")
+        if let text = try? await viaAndroidPlayer(id: id, html: html), !text.isEmpty { return (title, text) }
+        if !html.isEmpty, let text = try? await viaTranscriptPanel(html: html), !text.isEmpty { return (title, text) }
+        if !html.isEmpty, let tracks = tracks(fromJSONText: html), let text = try? await download(pick(tracks)), !text.isEmpty {
+            return (title, text)
         }
+        throw AppError.message("ดึง transcript จาก YouTube ไม่ได้ — วิดีโออาจไม่มีคำบรรยาย หรือเป็นวิดีโอส่วนตัว/จำกัดอายุ")
+    }
 
-        let preferred = tracks.first { $0.languageCode.hasPrefix("th") && $0.kind != "asr" }
+    private static func watchPage(_ id: String) async throws -> String {
+        var request = URLRequest(url: URL(string: "https://www.youtube.com/watch?v=\(id)&hl=th")!, timeoutInterval: 30)
+        request.setValue(desktopUA, forHTTPHeaderField: "User-Agent")
+        request.setValue("th,en;q=0.8", forHTTPHeaderField: "Accept-Language")
+        request.setValue("CONSENT=YES+cb; SOCS=CAI", forHTTPHeaderField: "Cookie")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func postJSON(_ url: URL, body: [String: Any], headers: [String: String]) async throws -> Any {
+        var request = URLRequest(url: url, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("CONSENT=YES+cb; SOCS=CAI", forHTTPHeaderField: "Cookie")
+        for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw AppError.message("YouTube HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    // MARK: Route 1 — InnerTube player (Android client)
+
+    private static func viaAndroidPlayer(id: String, html: String) async throws -> String? {
+        let apiKey = HTMLText.firstMatch(html, "\"INNERTUBE_API_KEY\":\\s*\"([a-zA-Z0-9_-]+)\"")
+        var components = URLComponents(string: "https://www.youtube.com/youtubei/v1/player")!
+        components.queryItems = [URLQueryItem(name: "prettyPrint", value: "false")] + (apiKey.map { [URLQueryItem(name: "key", value: $0)] } ?? [])
+        let json = try await postJSON(components.url!, body: [
+            "context": ["client": [
+                "clientName": "ANDROID",
+                "clientVersion": androidVersion,
+                "androidSdkVersion": 30,
+                "hl": "th",
+                "gl": "TH",
+            ]],
+            "videoId": id,
+        ], headers: [
+            "User-Agent": "com.google.android.youtube/\(androidVersion) (Linux; U; Android 11) gzip",
+            "X-YouTube-Client-Name": "3",
+            "X-YouTube-Client-Version": androidVersion,
+        ])
+        guard let tracks = JSONWalk.first(key: "captionTracks", in: json) as? [[String: Any]] else { return nil }
+        let parsed = tracks.compactMap(Track.init(json:))
+        guard !parsed.isEmpty else { return nil }
+        return try await download(pick(parsed))
+    }
+
+    // MARK: Route 2 — "Show transcript" panel
+
+    private static func viaTranscriptPanel(html: String) async throws -> String? {
+        guard let params = HTMLText.firstMatch(html, "\"getTranscriptEndpoint\":\\{\"params\":\"([^\"]+)\"") else { return nil }
+        let version = HTMLText.firstMatch(html, "\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"([^\"]+)\"") ?? "2.20250101.00.00"
+        let apiKey = HTMLText.firstMatch(html, "\"INNERTUBE_API_KEY\":\\s*\"([a-zA-Z0-9_-]+)\"")
+        var components = URLComponents(string: "https://www.youtube.com/youtubei/v1/get_transcript")!
+        components.queryItems = [URLQueryItem(name: "prettyPrint", value: "false")] + (apiKey.map { [URLQueryItem(name: "key", value: $0)] } ?? [])
+        let json = try await postJSON(components.url!, body: [
+            "context": ["client": ["clientName": "WEB", "clientVersion": version, "hl": "th", "gl": "TH"]],
+            "params": params.replacingOccurrences(of: "\\u003d", with: "="),
+        ], headers: [
+            "User-Agent": desktopUA,
+            "Origin": "https://www.youtube.com",
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": version,
+        ])
+        let segments = JSONWalk.all(key: "transcriptSegmentRenderer", in: json)
+        var items: [(Int, String)] = []
+        for case let segment as [String: Any] in segments {
+            let start = Int(segment["startMs"] as? String ?? "") ?? 0
+            let runs = (segment["snippet"] as? [String: Any])?["runs"] as? [[String: Any]] ?? []
+            let text = runs.compactMap { $0["text"] as? String }.joined()
+            if !text.trimmingCharacters(in: .whitespaces).isEmpty { items.append((start, text)) }
+        }
+        return items.isEmpty ? nil : group(items)
+    }
+
+    // MARK: Caption tracks
+
+    private struct Track {
+        let baseUrl: String
+        let languageCode: String
+        let kind: String?
+
+        init?(json: [String: Any]) {
+            guard let url = json["baseUrl"] as? String else { return nil }
+            baseUrl = url
+            languageCode = json["languageCode"] as? String ?? ""
+            kind = json["kind"] as? String
+        }
+    }
+
+    private static func tracks(fromJSONText html: String) -> [Track]? {
+        guard let array = extractArray(after: "\"captionTracks\":", in: html),
+              let data = array.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
+        let tracks = json.compactMap(Track.init(json:))
+        return tracks.isEmpty ? nil : tracks
+    }
+
+    /// Thai first, then English; human captions before auto-generated ones.
+    private static func pick(_ tracks: [Track]) -> Track {
+        tracks.first { $0.languageCode.hasPrefix("th") && $0.kind != "asr" }
             ?? tracks.first { $0.languageCode.hasPrefix("th") }
             ?? tracks.first { $0.languageCode.hasPrefix("en") && $0.kind != "asr" }
             ?? tracks.first { $0.languageCode.hasPrefix("en") }
             ?? tracks[0]
+    }
 
-        guard let captionURL = URL(string: preferred.baseUrl + "&fmt=json3") else {
-            throw AppError.message("ลิงก์คำบรรยายไม่ถูกต้อง")
+    /// Downloads a caption track and turns it into timestamped paragraphs (XML formats srv1/srv3, or json3).
+    private static func download(_ track: Track) async throws -> String? {
+        let base = track.baseUrl
+            .replacingOccurrences(of: "\\u0026", with: "&")
+            .replacingOccurrences(of: "&fmt=srv3", with: "")
+        guard let url = URL(string: base) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: 30)
+        request.setValue(desktopUA, forHTTPHeaderField: "User-Agent")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let body = String(decoding: data, as: UTF8.self)
+        var items: [(Int, String)] = []
+
+        // srv1: <text start="1.23" dur="..">…</text>
+        let srv1 = HTMLText.regex("<text start=\"([0-9.]+)\"[^>]*>([\\s\\S]*?)</text>")
+        let ns = body as NSString
+        for m in srv1.matches(in: body, range: NSRange(location: 0, length: ns.length)) {
+            let seconds = Double(ns.substring(with: m.range(at: 1))) ?? 0
+            items.append((Int(seconds * 1000), cleanCaption(ns.substring(with: m.range(at: 2)))))
         }
-        let (captionData, _) = try await URLSession.shared.data(from: captionURL)
+        // srv3: <p t="1230" d="..">…</p>
+        if items.isEmpty {
+            let srv3 = HTMLText.regex("<p t=\"([0-9]+)\"[^>]*>([\\s\\S]*?)</p>")
+            for m in srv3.matches(in: body, range: NSRange(location: 0, length: ns.length)) {
+                let ms = Int(ns.substring(with: m.range(at: 1))) ?? 0
+                items.append((ms, cleanCaption(ns.substring(with: m.range(at: 2)))))
+            }
+        }
+        // json3
+        if items.isEmpty, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let events = json["events"] as? [[String: Any]] {
+            for event in events {
+                let segs = event["segs"] as? [[String: Any]] ?? []
+                let text = segs.compactMap { $0["utf8"] as? String }.joined()
+                items.append((event["tStartMs"] as? Int ?? 0, text))
+            }
+        }
+        items = items.filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return items.isEmpty ? nil : group(items)
+    }
+
+    private static func cleanCaption(_ raw: String) -> String {
+        let noTags = HTMLText.replace(raw, "<[^>]+>", with: "")
+        return HTMLText.decodeEntities(HTMLText.decodeEntities(noTags)).replacingOccurrences(of: "\n", with: " ")
+    }
+
+    /// Joins caption lines into ~30 s paragraphs with a timestamp each.
+    private static func group(_ items: [(Int, String)]) -> String {
         var lines: [String] = []
-        if let json = try? JSONDecoder().decode(Json3.self, from: captionData) {
-            var lastStamp = -30_000
-            var buffer = ""
-            for event in json.events ?? [] {
-                let text = (event.segs ?? []).compactMap(\.utf8).joined()
-                    .replacingOccurrences(of: "\n", with: " ")
-                guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-                let start = event.tStartMs ?? 0
-                if start - lastStamp >= 30_000 {
-                    if !buffer.isEmpty { lines.append(buffer) }
-                    buffer = "[\(timestamp(ms: start))] "
-                    lastStamp = start
-                }
-                buffer += text + " "
+        var buffer = ""
+        var lastStamp = -30_000
+        for (start, text) in items {
+            if start - lastStamp >= 30_000 {
+                if !buffer.isEmpty { lines.append(buffer.trimmingCharacters(in: .whitespaces)) }
+                buffer = "[\(timestamp(ms: start))] "
+                lastStamp = start
             }
-            if !buffer.isEmpty { lines.append(buffer) }
+            buffer += text.trimmingCharacters(in: .whitespaces) + " "
         }
-        if lines.isEmpty {
-            // Older XML caption format.
-            let xml = String(decoding: captionData, as: UTF8.self)
-            let re = HTMLText.regex("<text start=\"([0-9.]+)\"[^>]*>(.*?)</text>")
-            let ns = xml as NSString
-            for m in re.matches(in: xml, range: NSRange(location: 0, length: ns.length)) {
-                let seconds = Double(ns.substring(with: m.range(at: 1))) ?? 0
-                let text = HTMLText.decodeEntities(HTMLText.decodeEntities(ns.substring(with: m.range(at: 2))))
-                lines.append("[\(timestamp(ms: Int(seconds * 1000)))] \(text)")
-            }
-        }
-        guard !lines.isEmpty else {
-            throw AppError.message("YouTube ไม่ส่งคำบรรยายกลับมา — ลองคัดลอก transcript จากแอป YouTube มาวางเป็นข้อความ")
-        }
-        return (title, lines.joined(separator: "\n"))
+        if !buffer.isEmpty { lines.append(buffer.trimmingCharacters(in: .whitespaces)) }
+        return lines.joined(separator: "\n")
     }
 
     static func timestamp(ms: Int) -> String {
@@ -299,5 +415,33 @@ enum YouTubeTranscript {
             index = text.index(after: index)
         }
         return nil
+    }
+}
+
+/// Small helpers to find values deep inside YouTube's JSON responses.
+enum JSONWalk {
+    static func first(key: String, in value: Any) -> Any? {
+        if let dict = value as? [String: Any] {
+            if let found = dict[key] { return found }
+            for child in dict.values { if let found = first(key: key, in: child) { return found } }
+        } else if let array = value as? [Any] {
+            for child in array { if let found = first(key: key, in: child) { return found } }
+        }
+        return nil
+    }
+
+    static func all(key: String, in value: Any) -> [Any] {
+        var out: [Any] = []
+        func walk(_ v: Any) {
+            if let dict = v as? [String: Any] {
+                for (k, child) in dict {
+                    if k == key { out.append(child) } else { walk(child) }
+                }
+            } else if let array = v as? [Any] {
+                array.forEach(walk)
+            }
+        }
+        walk(value)
+        return out
     }
 }

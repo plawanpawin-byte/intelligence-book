@@ -208,9 +208,9 @@ struct GeminiKeySection: View {
                 }
             }
         } header: {
-            Text("Gemini (ถอดคำพูดจาก YouTube)")
+            Text("สำรอง: Gemini (ไม่บังคับ)")
         } footer: {
-            Text("YouTube ไม่ส่งคำบรรยายให้แอปโดยตรงแล้ว แอปจึงส่งลิงก์วิดีโอให้ Google Gemini ถอดคำพูดแทน (ส่งเฉพาะลิงก์ ไม่ส่งข้อมูลอื่น) จากนั้นสรุปโน้ตด้วยโมเดลในเครื่องตามเดิม key เก็บไว้ใน Keychain ของเครื่อง")
+            Text("แอปดึง transcript จาก YouTube ให้เองอยู่แล้ว ใส่ key ไว้เผื่อเฉพาะวิดีโอที่ไม่มีคำบรรยาย ซึ่งจะส่งลิงก์ให้ Google Gemini ถอดคำพูดแทน key เก็บใน Keychain ของเครื่อง")
         }
     }
 }

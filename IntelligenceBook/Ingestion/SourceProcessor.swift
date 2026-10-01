@@ -55,18 +55,16 @@ final class SourceProcessor {
                     throw AppError.message("ไม่พบรหัสวิดีโอ YouTube ในลิงก์นี้")
                 }
                 if let title = await GeminiYouTube.title(videoID: id) { source.title = title }
-                if let key = GeminiKey.value {
-                    source.detail = "Gemini กำลังถอดคำพูดจากวิดีโอ…"
+                source.detail = "กำลังดึง transcript จาก YouTube"
+                do {
+                    let result = try await YouTubeTranscript.fetch(source.urlString ?? "")
+                    source.text = result.text
+                    if source.title == source.urlString, !result.title.isEmpty { source.title = result.title }
+                } catch {
+                    // Optional fallback for videos without captions.
+                    guard let key = GeminiKey.value else { throw error }
+                    source.detail = "ไม่มีคำบรรยาย — Gemini กำลังถอดคำพูดจากวิดีโอ…"
                     source.text = try await GeminiYouTube.transcript(videoID: id, key: key)
-                } else {
-                    source.detail = "กำลังดึงคำบรรยาย"
-                    do {
-                        let result = try await YouTubeTranscript.fetch(source.urlString ?? "")
-                        source.text = result.text
-                        if !result.title.isEmpty { source.title = result.title }
-                    } catch {
-                        throw AppError.message("YouTube ไม่ส่งคำบรรยายให้แอปโดยตรง — ใส่ Gemini API key ในหน้าเพิ่มลิงก์ YouTube แล้วลองใหม่ (แตะแหล่งข้อมูลนี้ > ลองอีกครั้ง)")
-                    }
                 }
 
             case .text:
