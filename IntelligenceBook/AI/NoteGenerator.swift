@@ -105,7 +105,7 @@ final class GenerationJob {
             // Lines or callouts that state a number the sources never mention are made up: drop them.
             let allowed = Grounding.numbers(in: texts.joined(separator: "\n"))
             let grounded = Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed)
-            output = MarkdownFixer.fix(MarkdownFixer.questionCallouts(grounded), thai: thai)
+            output = MarkdownFixer.fix(MarkdownFixer.headingQuestions(MarkdownFixer.questionCallouts(grounded)), thai: thai)
             progress = 1
             phase = .done
         } catch is CancellationError {
@@ -135,7 +135,8 @@ final class GenerationJob {
                 )
             }
         }
-        return text
+        // Lines copied from any worked example (e.g. a volcano table row in an economics note) are dropped.
+        return FactList.removeExampleLines(text, examples: Examples.all)
     }
 
     // MARK: Short material: facts → one compact section, no padding.
@@ -147,7 +148,7 @@ final class GenerationJob {
             system: kit.factsSystem, prompt: kit.factsPrompt(corpus), maxTokens: 500, temperature: 0.2,
             example: kit.factsExample
         ) { [weak self] partial in self?.output = partial }
-        let facts = FactList.parse(FactList.removeExampleLines(factsText, example: kit.factsExample.assistant))
+        let facts = FactList.parse(factsText)
         phase = .writing(1, 1)
         progress = 0.5
         var section = try await ask(
@@ -201,7 +202,7 @@ final class GenerationJob {
                 example: kit.factsExample
             ) { [weak self] partial in self?.output = partial }
             tick()
-            let parsed = FactList.parse(FactList.removeExampleLines(raw, example: kit.factsExample.assistant))
+            let parsed = FactList.parse(raw)
             var fresh: [String] = []
             for fact in parsed.facts {
                 let key = FactList.key(fact)
@@ -258,6 +259,22 @@ final class GenerationJob {
         ) { [weak self] partial in self?.output = partial + "\n\n" + body }
         tick()
         opening = NoteCleaner.clean(opening)
+        if !SectionTools.hasHook(opening) {
+            // The model sometimes skips the hook and goes straight to the overview: ask for it on its own.
+            var hook = try await llm.generate(
+                system: kit.openSystem, prompt: kit.hookPrompt(outline), maxTokens: 250, temperature: 0.5
+            )
+            hook = NoteCleaner.clean(hook).components(separatedBy: "\n\n").first ?? ""
+            if !hook.isEmpty {
+                var lines = opening.components(separatedBy: "\n")
+                if lines.first?.hasPrefix("# ") == true {
+                    let title = lines.removeFirst()
+                    opening = title + "\n\n" + hook + "\n\n" + lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    opening = hook + "\n\n" + opening
+                }
+            }
+        }
         if !opening.hasPrefix("# ") {
             opening = "# \(SectionTools.heading(of: sections[0]))\n\n" + opening
         }
@@ -358,6 +375,11 @@ struct NotePrompts {
 
     func openPrompt(_ outline: String) -> String { "<outline>\n\(outline)\n</outline>\n\n\(Self.openTask)" }
 
+    func hookPrompt(_ outline: String) -> String {
+        openPrompt(outline) + "\n\nNow write ONLY the hook paragraph: 2–3 sentences that make people want to read on, "
+            + "starting from the most surprising fact or striking number in the outline."
+    }
+
     var openExample: FewShot {
         FewShot(user: openPrompt(SectionTools.outline([thai ? Examples.thaiSection : Examples.englishSection], perSection: 500)),
                 assistant: thai ? Examples.thaiOpening : Examples.englishOpening)
@@ -400,6 +422,10 @@ struct NotePrompts {
 // MARK: - Worked examples (shown to the model as earlier chat turns)
 
 enum Examples {
+    static var all: [String] {
+        [thaiSpeech, thaiFacts, thaiSection, thaiOpening, englishSpeech, englishFacts, englishSection, englishOpening]
+    }
+
     static let thaiSpeech = "โอเค เอ่อ วันนี้นะครับเรื่องภูเขาไฟ ภูเขาไฟเนี่ยมันเกิดจากแมกม่า magma ก็คือหินที่มันหลอมละลายอยู่ใต้เปลือกโลก "
         + "มันร้อนมาก ประมาณพันองศา แล้วมันเบากว่าหินรอบๆ ก็เลยดันขึ้นมาตามรอยแตก พอออกมาข้างนอกแล้วเราเรียกว่าลาวา lava นะ "
         + "จำไว้ ข้อสอบชอบถาม แมกม่าอยู่ข้างใน ลาวาอยู่ข้างนอก อ่ะ ทีนี้ภูเขาไฟมีกี่แบบ มีสองแบบหลักๆ "
@@ -429,10 +455,8 @@ enum Examples {
     ### สองแบบหลัก แบ่งตามความหนืดของลาวา
     สิ่งที่ตัดสินว่าภูเขาไฟจะ "ไหล" หรือ "ระเบิด" คือ ==ความหนืดของลาวา== ยิ่งลาวาหนืด แก๊สยิ่งหนีออกไม่ได้ แรงดันจึงสะสมจนปะทุอย่างรุนแรง
 
-    | แบบ | ลาวา | การปะทุ | ตัวอย่าง |
-    |---|---|---|---|
-    | ภูเขาไฟรูปโล่ (shield volcano) | เหลว ไหลไปไกล | ไม่ค่อยระเบิด | ฮาวาย |
-    | ภูเขาไฟสลับชั้น (stratovolcano) | หนืด แก๊สออกไม่ได้ | ระเบิดรุนแรง | ฟูจิ |
+    - **ภูเขาไฟรูปโล่ (shield volcano)**: ลาวาเหลว ไหลไปได้ไกล จึงไม่ค่อยระเบิด เช่น ฮาวาย
+    - **ภูเขาไฟสลับชั้น (stratovolcano)**: ลาวาหนืดจนแก๊สออกไม่ได้ จึงระเบิดรุนแรง เช่น ฟูจิ
 
     > [!example] ภูเขาไฟเปลี่ยนอุณหภูมิโลกได้
     > การระเบิดของภูเขาไฟปินาตูโบในปี 1991 ส่งเถ้าถ่านขึ้นไปบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี
@@ -478,10 +502,8 @@ enum Examples {
     ### Two main types, decided by the lava's thickness
     Whether a volcano flows or explodes depends on ==how viscous its lava is==: thick lava traps gas, so pressure builds until it erupts violently.
 
-    | Type | Lava | Eruption | Example |
-    |---|---|---|---|
-    | Shield volcano | runny, flows far | rarely explosive | Hawaii |
-    | Stratovolcano | thick, traps gas | violent | Mount Fuji |
+    - **Shield volcano**: runny lava that flows far, so it rarely explodes — e.g. Hawaii
+    - **Stratovolcano**: thick lava traps gas, so it erupts violently — e.g. Mount Fuji
 
     > [!example] A volcano can cool the planet
     > Pinatubo's 1991 eruption sent ash high enough to block sunlight, cooling the Earth by about 0.5 °C for almost 2 years.

@@ -134,9 +134,10 @@ enum FactList {
     }
 
     /// Drops fact lines copied from the worked example (the model sometimes appends one of its facts).
-    static func removeExampleLines(_ raw: String, example: String) -> String {
+    static func removeExampleLines(_ raw: String, examples: [String]) -> String {
         raw.components(separatedBy: "\n").filter { line in
-            line.trimmingCharacters(in: .whitespaces).count <= 20 || Grounding.overlap(line, with: example, size: 10) <= 0.5
+            line.trimmingCharacters(in: .whitespaces).count <= 20
+                || !examples.contains { Grounding.overlap(line, with: $0, size: 10) > 0.5 }
         }.joined(separator: "\n")
     }
 
@@ -195,6 +196,14 @@ enum SectionTools {
         return out
     }
 
+    /// True when the opening has a real paragraph (not only a title and the overview callout).
+    static func hasHook(_ opening: String) -> Bool {
+        opening.components(separatedBy: "\n").contains { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            return !t.isEmpty && !t.hasPrefix("#") && !t.hasPrefix(">") && t.count > 40
+        }
+    }
+
     /// Headings + the first words of each section, for the opening writer.
     static func outline(_ sections: [String], perSection: Int) -> String {
         sections.map { section in
@@ -211,6 +220,19 @@ enum SectionTools {
 
 /// Fixes the small format slips of a 3B model so callouts render properly.
 enum MarkdownFixer {
+    /// Inside the review-questions section, numbered "### 1. Question" headings become question callouts.
+    static func headingQuestions(_ text: String) -> String {
+        var inReview = false
+        return text.components(separatedBy: "\n").map { line -> String in
+            if line.hasPrefix("## ") {
+                inReview = ["คำถาม", "Review", "question"].contains { line.contains($0) }
+                return line
+            }
+            guard inReview, let range = line.range(of: "^#{3,6}\\s*\\d+[.)]\\s*", options: .regularExpression) else { return line }
+            return "> [!question] " + line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+        }.joined(separator: "\n")
+    }
+
     /// "1. Question?" followed by "**Answer:** …" → a question callout; answers without a question are dropped.
     static func questionCallouts(_ text: String) -> String {
         let lines = text.components(separatedBy: "\n")

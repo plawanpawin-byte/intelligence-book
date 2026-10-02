@@ -75,8 +75,12 @@ check("one h2", SectionTools.normalize("## A\ntext\n## B\nmore", topic: ""), "##
 check("h1 to h2", SectionTools.normalize("# A\ntext\n# B", topic: ""), "## A\ntext\n### B")
 check("example line filter",
       FactList.removeExampleLines("TOPIC: x\n- อุปสงค์คือปริมาณที่ผู้บริโภคเต็มใจซื้อ\n- ตัวอย่างผลกระทบ: ภูเขาไฟปินาตูโบระเบิดในปี 1991 เถ้าถ่านบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี",
-                                  example: "- ตัวอย่างผลกระทบ: ภูเขาไฟปินาตูโบระเบิดในปี 1991 เถ้าถ่านบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี"),
+                                  examples: ["- ตัวอย่างผลกระทบ: ภูเขาไฟปินาตูโบระเบิดในปี 1991 เถ้าถ่านบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี"]),
       "TOPIC: x\n- อุปสงค์คือปริมาณที่ผู้บริโภคเต็มใจซื้อ")
+
+check("heading questions", MarkdownFixer.headingQuestions("## คำถามทบทวน\n\n### 1. อะไรคือผลทางการทดแทน\n## Other\n### 1. keep"),
+      "## คำถามทบทวน\n\n> [!question] อะไรคือผลทางการทดแทน\n## Other\n### 1. keep")
+check("hook", "\(SectionTools.hasHook("# T\n\n> [!summary] x\n> y")) \(SectionTools.hasHook("# T\n\nรู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5"))"), "false true")
 
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
 exit(failed == 0 ? 0 : 1)
