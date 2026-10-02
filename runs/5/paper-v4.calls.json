@@ -1,0 +1,82 @@
+[
+ {
+  "label": "facts 1/3",
+  "output": "TOPIC: Attention Mechanism in Transformer Model\n\u2022 The attention mechanism was introduced as an add-on to recurrent encoder-decoder models (Bahdanau et al., 2015) to address weaknesses of sequential computation and information retention.\n\u2022 The main reason for using attention is to allow the decoder to look back at every encoder state and decide which input positions are relevant for each output step.\n\u2022 **Attention as a soft dictionary lookup**: it relaxes the traditional dictionary query where either matches or does not, returning the corresponding value; instead, every value contributes in proportion to how well its key matches the query.\n\u2022 Each token in the input is represented by a vector x_i of dimension d_model, with three learned linear maps producing:\n  - Query q_i = x_i W^Q\n  - Key k_i = x_i W^K\n  - Value v_i = x_i W^V\n\u2022 The complete attention operation is written as: Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V (9.1)\n\u2022 **Scaled dot-product attention**: the Transformer uses the dot product as its similarity function; the product Q K^T measures how strongly token i attends to token j.\n\u2022 The softmax is applied row by row, so each row becomes a probability distribution over the n positions; multiplying by V then mixes the value vectors according to those probabilities.\n\u2022 Dividing by sqrt(d_k) restores unit variance and keeps the softmax in a well-behaved range, preventing learning stalls due to saturated scores.\n\u2022 Worked example: suppose a sequence has three tokens and d_k = 4; for the first token, the raw scores against the three keys are (8, 4, 0).",
+  "prompt_tokens": 1287,
+  "gen_tokens": 357,
+  "seconds": 28.412240743637085,
+  "finish": "stop",
+  "prompt_tps": 111.39087092309124,
+  "gen_tps": 21.21945593077122
+ },
+ {
+  "label": "facts 2/3",
+  "output": "TOPIC: Multi-Head Attention and Positional Information in Transformers\n* In multi-head attention, h attention operations are run in parallel, each with its own projection matrices W_i^Q, W_i^K, W_i^V that map into a smaller subspace.\n* The outputs of the h attention operations are concatenated and passed through a final linear map W^O to produce MultiHead(Q, K, V).\n* In the original base model, d_model = 512 and h = 8 heads, so each head works with d_k = d_v = 64 dimensions.\n* Empirical results show that different heads learn to specialize: some track previous tokens, others link pronouns to nouns they refer to, and others follow syntactic relations.\n* However, these interpretations should be treated with caution; heads are not guaranteed to have a clean meaning.\n* Attention is permutation-invariant, meaning that shuffling the input tokens shuffles the output in the same way but otherwise unchanged.\n* To address this limitation, positional encoding vectors are added to each input embedding, built from sine and cosine functions of different frequencies.\n* The original Transformer adds a positional encoding vector to each input embedding using the formula:\n  PE(pos, 2i) = sin(pos / 10000^(2i/d_model))\n  PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))\n* Low dimensions oscillate quickly and high dimensions slowly, so every position receives a distinct pattern.\n* Many later models instead learn the position embeddings directly or use relative schemes such as rotary position embeddings (RoPE).\n* A Transformer layer combines two sub-layers: multi-head self-attention and a position-wise feed-forward network (FFN) applied independently to every token.\n* The FNN is defined as:\n  FFN(x) = max(0, x W_1 + b_1) W_2 + b_2\n* This block is repeated multiple times in a transformer model.",
+  "prompt_tokens": 1335,
+  "gen_tokens": 409,
+  "seconds": 23.26415705680847,
+  "finish": "stop",
+  "prompt_tps": 311.45790646394147,
+  "gen_tps": 21.590379085014078
+ },
+ {
+  "label": "facts 3/3",
+  "output": "TOPIC: How Self-Attention Works and its Computational Cost\n- **Self-attention** computes a weighted average of value vectors with weights given by a softmax over query-key similarities.\n- To prevent the softmax from saturating, **scaling is done by sqrt(d_k)**.\n- Using multiple **heads** allows the model to attend to several relationships at once.\n- **Positional encodings** are used to restore word-order information.\n- Each block consists of **attention + FFN**, with residual connections and LayerNorm: output = LayerNorm(x + Sublayer(x)).\n- The cost of full self-attention is **quadratic in sequence length**: O(n^2 d) for a sequence of length n.\n\nExercises:\n- 9.1: Repeat the worked example of Section 9.3 with scores (6, 6, 0) and d_k = 9 to determine which tokens receive the largest weights.\n- 9.2: Explain why a model without positional encodings cannot distinguish \"dog bites man\" from \"man bites dog\".",
+  "prompt_tokens": 1124,
+  "gen_tokens": 218,
+  "seconds": 14.749526023864746,
+  "finish": "stop",
+  "prompt_tps": 278.7148488669896,
+  "gen_tps": 20.410696927927937
+ },
+ {
+  "label": "write 1/3",
+  "output": "## Soft Dictionary Lookup: How Attention Works in Transformers\n\nThe attention mechanism was introduced as an add-on to recurrent encoder-decoder models (**Bahdanau et al., 2015**) to address weaknesses of sequential computation and information retention.\n\n### Why Use Attention?\nThe main reason for using attention is to allow the decoder to look back at every encoder state and decide which input positions are relevant for each output step.\n\n> [!definition] **Attention as a soft dictionary lookup**\nIt relaxes the traditional dictionary query where either matches or does not, returning the corresponding value; instead, every value contributes in proportion to how well its key matches the query.\n\n### Representing Tokens\nEach token in the input is represented by a vector x_i of dimension d_model. Three learned linear maps produce:\n\n| Component | Formula |\n| --- | --- |\n| Query q_i = x_i W^Q | q_i = x_i * W^Q |\n| Key k_i = x_i W^K | k_i = x_i * W^K |\n| Value v_i = x_i W^V | v_i = x_i * W^V |\n\n### The Complete Attention Operation\nThe complete attention operation is written as: **Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V**\n\n> [!tip] Scaled dot-product attention\nThe Transformer uses the dot product as its similarity function; the product Q K^T measures how strongly token i attends to token j.\n\n### How Softmax Works\nThe softmax is applied row by row, so each row becomes a probability distribution over the n positions. Multiplying by V then mixes the value vectors according to those probabilities.\n\n| Token | Raw Scores Against Keys | Probability Distribution |\n| --- | --- | --- |\n| 1    | (8, 4, 0)               | [0.25, 0.5, 0.25]        |\n| 2    | (6, 3, 1)                | [0.33, 0.34, 0.33]        |\n| 3    | (9, 5, 2)                | [0.58, 0.21, 0.21]        |\n\n> [!warning] Preventing learning stalls\nDividing by sqrt(d_k) restores unit variance and keeps the softmax in a well-behaved range, preventing learning stalls due to saturated scores.\n\n- [ ] Try working through more examples",
+  "prompt_tokens": 1021,
+  "gen_tokens": 510,
+  "seconds": 29.18854594230652,
+  "finish": "stop",
+  "prompt_tps": 238.7110398770762,
+  "gen_tps": 20.50123104672662
+ },
+ {
+  "label": "write 2/3",
+  "output": "## Multi-Head Attention: How Transformers Focus on the Right Things\n\n### **Parallel Processing**\nIn multi-head attention, h attention operations are run **in parallel**, each with its own projection matrices W_i^Q, W_i^K, W_i^V that map into a smaller subspace.\n\n> [!definition] **MultiHead(Q, K, V)**\n> Outputs of h attention operations concatenated and passed through a final linear map W^O to produce MultiHead(Q, K, V).\n\n### **Interpreting Attention Heads**\nEmpirical results show that different heads learn to specialize: some track previous tokens, others link pronouns to nouns they refer to, and others follow syntactic relations. However, these interpretations should be treated with caution; heads are not guaranteed to have a clean meaning.\n\n- [ ] Be cautious when interpreting attention head meanings\n\n### **Permutation-Invariance**\nAttention is permutation-invariant, meaning that shuffling the input tokens shuffles the output in the same way but otherwise unchanged.\n\n> [!tip] Don't worry about shuffling input tokens\n> Attention remains unchanged under token permutations.\n\n### **Positional Information**\nTo address this limitation, positional encoding vectors are added to each input embedding. These vectors are built from sine and cosine functions of different frequencies.\n\n| Dimension | Sine/Cosine Frequency |\n|---|---|\n| 1 | High frequency |\n| 2 | Medium frequency |\n| 3 | Low frequency |\n\n### **Transformer Layer Structure**\nA Transformer layer combines two sub-layers: multi-head self-attention and a position-wise feed-forward network (FFN) applied independently to every token.\n\n> [!definition] **FFN**\n> Defined as:\n> - ReLU activation function\n> - Linear transformation\n\n### **Repeating the Block**\nThis block is repeated multiple times in a transformer model, allowing it to process sequences of tokens.\n\n> [!tip] Repeat the block for sequence processing",
+  "prompt_tokens": 1005,
+  "gen_tokens": 399,
+  "seconds": 23.458448886871338,
+  "finish": "stop",
+  "prompt_tps": 287.10652102358705,
+  "gen_tps": 20.026989505418285
+ },
+ {
+  "label": "write 3/3",
+  "output": "## Self-Attention: How it Works and its Computational Cost\n\n### Weights and Averages\nSelf-attention computes a weighted average of value vectors based on similarities between **query** and **key** vectors. ==Softmax is used to normalize these weights==, ensuring that the output is a probability distribution.\n\n> [!definition] Softmax\n> Softmax: function that takes in a vector and returns a probability distribution over all possible values.\n\n### Scaling for Stability\nTo prevent the softmax from saturating, **scaling is done by sqrt(d_k)**. This helps ensure that the weights are properly normalized and that the model can learn meaningful relationships between query-key pairs.\n\n- [ ] Understand the importance of scaling\n\n### Multiple Heads for Multi-Relationships\nUsing multiple **heads** allows the model to attend to several relationships at once. This increases the capacity of the model and enables it to capture complex patterns in data.\n\n> [!tip] More heads = more relationships = better performance\n\n### Positional Encodings\n**Positional encodings** are used to restore word-order information. Without these, the model would not be able to distinguish between sentences like \"dog bites man\" and \"man bites dog\".\n\n> [!warning] No positional encodings = no word order\n> Model cannot distinguish between \"dog bites man\" and \"man bites dog\"\n\n### Block Structure\nEach block consists of **attention + FFN**, with residual connections and LayerNorm: output = LayerNorm(x + Sublayer(x)).\n\n- [ ] Understand the role of residual connections\n\n### Computational Cost\nThe cost of full self-attention is **quadratic in sequence length**: O(n^2 d) for a sequence of length n. This means that as the input sequence gets longer, the computational cost increases exponentially.\n\n> [!tip] Be aware of the computational cost\n> Full self-attention can be computationally expensive\n\n## Example: Determining Token Weights\n\nGiven scores (6, 6, 0) and d_k = 9, we need to determine which tokens receive the largest weights.\n\n| Query | Key | Score |\n|---|---|---|\n| 6   | 6   | 6    |\n| 6   | 0   | 0    |\n\nThe token with score 6 receives the largest weight because it has the highest similarity between its query and key vectors.",
+  "prompt_tokens": 882,
+  "gen_tokens": 491,
+  "seconds": 27.876343727111816,
+  "finish": "stop",
+  "prompt_tps": 241.3131264225619,
+  "gen_tps": 20.299835775680524
+ },
+ {
+  "label": "open",
+  "output": "# Soft Dictionary Lookup: How Attention Works in Transformers\nThe attention mechanism is so powerful that it can even cool down the entire planet by about 0.5 \u00b0C for almost two years. Yet, most people don't know how this works, let alone why some volcanoes ooze while others explode violently.\n\n> [!summary] Overview\n> The attention mechanism was introduced to address weaknesses of sequential computation and information retention. In transformers, attention relaxes traditional dictionary queries where either matches or does not return a value; instead, every value contributes in proportion to how well its key matches the query. Attention is used in multi-head attention, self-attention, and other components of transformer models, allowing them to focus on the right things and capture complex patterns in data.",
+  "prompt_tokens": 1599,
+  "gen_tokens": 156,
+  "seconds": 14.321864128112793,
+  "finish": "stop",
+  "prompt_tps": 237.0544509483962,
+  "gen_tps": 20.67724870801074
+ },
+ {
+  "label": "close",
+  "output": "## Key takeaways\n- The attention mechanism allows the decoder to look back at every encoder state and decide which input positions are relevant for each output step.\n- Attention is permutation-invariant, meaning that shuffling the input tokens shuffles the output in the same way but otherwise unchanged.\n- Scaled dot-product attention is used in the Transformer, where the product Q K^T measures how strongly token i attends to token j.\n- Multi-head attention allows the model to attend to several relationships at once by running h attention operations in parallel.\n- Positional encodings are used to restore word-order information and prevent the softmax from saturating.\n\n## Review questions\n> [!question] Why does the Transformer use scaled dot-product attention instead of a traditional dictionary query?\n**Answer:** The Transformer uses scaled dot-product attention because it relaxes the traditional dictionary query where either matches or does not, returning the corresponding value; instead, every value contributes in proportion to how well its key matches the query.\n\n> [!question] How do positional encoding vectors help address the limitation of permutation-invariant attention?\n**Answer:** Positional encoding vectors help address the limitation of permutation-invariant attention by adding distinct patterns to each input embedding, allowing the model to distinguish between different word orders.\n\n> [!question] What is the main difference between multi-head attention and single-head attention?\n**Answer:** The main difference between multi-head attention and single-head attention is that multi-head attention allows the model to attend to several relationships at once by running h attention operations in parallel, whereas single-head attention uses a single attention operation.\n\n> [!question] Why does the Transformer use a position-wise feed-forward network (FFN) instead of a traditional FFNN?\n**Answer:** The Transformer uses a position-wise feed-forward network (FFN) because it applies the FNN independently to every token, allowing the model to process each token separately and maintain its word order information.",
+  "prompt_tokens": 1017,
+  "gen_tokens": 390,
+  "seconds": 22.9255530834198,
+  "finish": "stop",
+  "prompt_tps": 281.0099771465025,
+  "gen_tps": 20.238610012268516
+ }
+]
