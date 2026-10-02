@@ -1,0 +1,142 @@
+[
+ {
+  "label": "facts 1/5",
+  "output": "TOPIC: Attention Mechanism in Neural Networks  \n- **9.1 Why attention?**  \n  - Before 2017, most models for sequence tasks were built from recurrent neural networks (RNNs).  \n  - RNNs read a sentence one token at a time and compress information into a fixed-size hidden state vector $ h_t = f(h_{t-1}, x_t) $.  \n  - This design has two major weaknesses: sequential computation and loss of early-token relevance.  \n\n- **9.2 Attention as a soft dictionary lookup**  \n  - A useful mental model is a dictionary (key-value store), where a query matches exactly or does not match, returning the corresponding value.  \n  - Attention relaxes this by comparing a query with every key, converting similarity scores into weights that sum to one, and producing a weighted average of all values.  \n  - Nothing is retrieved \"exactly\"; instead, every value contributes in proportion to how well its key matches the query.",
+  "prompt_tokens": 895,
+  "gen_tokens": 207,
+  "seconds": 9.757609844207764,
+  "finish": "stop",
+  "prompt_tps": 201.2917721576763,
+  "gen_tps": 39.16186421446553
+ },
+ {
+  "label": "facts 2/5",
+  "output": "TOPIC: Transformer attention mechanism and its implementation  \n- Each token is represented by a vector $ x_i $ of dimension $ d_{\\text{model}} $.  \n- Three learned linear maps produce:  \n  - **Query**: $ q_i = x_i W^Q $, a vector of size $ n \\times d_k $  \n  - **Key**: $ k_i = x_i W^K $, a vector of size $ n \\times d_k $  \n  - **Value**: $ v_i = x_i W^V $, a vector of size $ n \\times d_v $  \n- Stacking the rows for all $ n $ tokens gives matrices:  \n  - $ Q $: $ n \\times d_k $  \n  - $ K $: $ n \\times d_k $  \n  - $ V $: $ n \\times d_v $  \n\n- The complete operation is:  \n  $$\n  \\text{Attention}(Q, K, V) = \\text{softmax}(Q K^T / \\sqrt{d_k}) V \\quad (9.1)\n  $$  \n- **Reading from inside out**:  \n  - $ Q K^T $ is an $ n \\times n $ matrix where entry $ (i, j) $ measures how strongly token $ i $ attends to token $ j $.  \n  - Softmax applied row by row converts each row into a probability distribution over the $ n $ positions.  \n  - Multiplying by $ V $ mixes the value vectors according to those probabilities.  \n\n- **Why divide by $ \\sqrt{d_k} $?**  \n  - If components of $ q $ and $ k $ are independent with mean 0 and variance 1, their dot product has mean 0 and variance $ d_k $.  \n  - For $ d_k = 64 $, scores typically have a standard deviation of 8, pushing softmax into a regime where one weight is close to 1 and the rest are close to 0.  \n  - **Saturated regime**: Gradients are tiny and learning stalls.  \n\n- **Scaling by $ 1/\\sqrt{d_k} $** restores unit variance and keeps the softmax in a well-behaved range.  \n\n- **Worked example**:  \n  - For three tokens with $ d_k = 4 $: raw scores against keys are (8, 4, 0).  \n  - After scaling: (4, 2, 0) \u2192 Softmax gives weights \u2248 (0.87, 0.12, 0.02).  \n  - Output for token 1 is $ 0.87 v_1 + 0.12 v_2 + 0.02 v_3 $: mostly its own value, with small contribution from token 2.  \n\n- **Without scaling**: weights would be \u2248 (0.98, 0.02, 0.00), a \"harder\" choice.",
+  "prompt_tokens": 1011,
+  "gen_tokens": 628,
+  "seconds": 19.911595106124878,
+  "finish": "stop",
+  "prompt_tps": 426.30099321401366,
+  "gen_tps": 35.86905942671402
+ },
+ {
+  "label": "facts 3/5",
+  "output": "TOPIC: Self-attention vs. cross-attention in encoder-decoder models  \n- **Self-attention** occurs when Q, K, and V are all computed from the same sequence. Each token builds a new representation by gathering information from other tokens in the same sentence.  \n- **Cross-attention** is used in the decoder of an encoder-decoder model. Queries come from the decoder, while keys and values come from the encoder's output.  \n- **Causal mask** is applied to prevent a language model from looking ahead during prediction. Before the softmax, every score (i, j) with j > i is set to -\u221e, making those weights zero.  \n- **Multi-head attention** processes multiple attention operations in parallel. Each head uses its own projection matrices W_i^Q, W_i^K, W_i^V to map into a smaller sub-space.  \n- The final output of all heads is concatenated and passed through a linear map W^O: MultiHead(Q, K, V) = Concat(head_1, ..., head_h) W^O head_i = Attention(Q W_i^Q, K W_i^K, V W_i^V).  \n- In the original base model, d_model = 512 and h = 8 heads. Each head uses d_k = d_v = 512 / 8 = 64 dimensions.  \n- **Empirically**, different heads specialize in tasks like tracking previous tokens, linking pronouns to nouns, or following syntactic relations.  \n- **Caution**: Heads do not always have a clear or predictable meaning.",
+  "prompt_tokens": 927,
+  "gen_tokens": 333,
+  "seconds": 11.237947940826416,
+  "finish": "stop",
+  "prompt_tps": 436.6829282317172,
+  "gen_tps": 36.63609385074914
+ },
+ {
+  "label": "facts 4/5",
+  "output": "TOPIC: How transformers handle attention and computational cost  \n- A **self-attention** mechanism compares every token with every other token, leading to a time and memory complexity of O(n\u00b2d) for a sequence of length n.  \n- For n = 1,000, the score matrix has one million entries per head; for n = 100,000, it would have ten billion entries.  \n- **Recurrent layers** cost O(n d\u00b2) but must be computed sequentially.  \n- The quadratic cost is the main reason early Transformers were limited to contexts of 512 or 1,024 tokens.  \n- **Pre-norm** (normalisation before sub-layer) makes very deep stacks easier to train.  \n- Encoder-only models (e.g., BERT) see the whole input at once and are suited for classification and retrieval.  \n- Decoder-only models (e.g., GPT family) use a causal mask and are trained to predict the next token.  \n- Encoder-decoder models (e.g., T5) keep both halves and are natural for translation and summarization.  \n- **FlashAttention** is a memory-efficient exact kernel that avoids materialising the full n x n matrix.  \n- During generation, decoder-only models cache the keys and values of previous tokens in a \"KV cache\" so that each new token needs only one new row of attention scores.  \n- **Positional encodings** restore word-order information.  \n- **Multiple heads** let the model attend to several relationships at once.  \n- **Scaling by sqrt(d_k)** prevents the softmax from saturating.  \n- **Attention** computes a weighted average of value vectors with weights given by a softmax over query-key similarities.  \n- **Each block** = attention + FFN, with residual connections and LayerNorm.  \n- The cost of full self-attention is quadratic in sequence length.  \n\nExercises:  \n9.1 With scores (6, 6, 0) and d_k = 9, which tokens receive the largest weights?  \n- The token with score 6 receives the largest weight.  \n9.2 Why can't a model without positional encodings distinguish \"dog bites man\" from \"man bites dog\"?  \n- The model cannot distinguish these sentences because it does not recognize word order.  \n\nSummary:  \n- **Self-attention** compares every token with every other token, leading to O(n\u00b2d) complexity.  \n- **Pre-norm** (normalisation before sub-layer) is more efficient for deep stacks.  \n- **FlashAttention** is a memory-efficient exact kernel that avoids full matrix materialization.  \n- **Positional encodings** restore word-order information.  \n- **Multiple heads** allow the model to attend to multiple relationships at once.",
+  "prompt_tokens": 1062,
+  "gen_tokens": 581,
+  "seconds": 19.341134071350098,
+  "finish": "stop",
+  "prompt_tps": 428.3108353058369,
+  "gen_tps": 34.58442447398404
+ },
+ {
+  "label": "facts 5/5",
+  "output": "TOPIC: How transformers use self-attention and its computational cost  \n- A **self-attention** mechanism compares every token with every other token, leading to a time and memory complexity of O(n\u00b2d).  \n- For a sequence of length n, the score matrix has n\u00b2 entries per head.  \n- When n = 1,000, each head has one million entries; when n = 100,000, it would have ten billion.  \n- **Recurrent layers** cost O(n d\u00b2) but must be computed sequentially.  \n- The quadratic cost is why early Transformers were limited to contexts of 512 or 1,024 tokens.  \n- To address this, modern models use **pre-norm** and efficient attention mechanisms like FlashAttention, which avoid full matrix materialization.  \n- Decoder-only models cache the \"KV cache\" to reduce attention costs during generation.  \n- **Scaling by sqrt(d_k)** prevents softmax from saturating.  \n- **Softmax** computes a weighted average of value vectors using query-key similarities.",
+  "prompt_tokens": 924,
+  "gen_tokens": 226,
+  "seconds": 8.716517210006714,
+  "finish": "stop",
+  "prompt_tps": 431.39871409678534,
+  "gen_tps": 34.510016083614495
+ },
+ {
+  "label": "write 1/6",
+  "output": "## Attention Mechanism: How Models Remember What They Need\n\nBefore 2017, most models for sequence tasks were built from **recurrent neural networks (RNNs)**. These models read a sentence one token at a time and compress information into a fixed-size hidden state vector $ h_t = f(h_{t-1}, x_t) $. This design has two major weaknesses: sequential computation and loss of early-token relevance.\n\n> [!warning] Early tokens are important\n> RNNs forget earlier parts of the input, which can hurt performance in tasks like translation or text generation.\n\n### Attention Mechanism: A Soft Dictionary Lookup\n\nAttention is a way to relax the strict matching rule of a dictionary. Instead of retrieving exactly what you ask for, it compares a query with every key and converts similarity scores into weights that sum to one. These weights are then used to produce a weighted average of all values.\n\n- **Query** = the part of the input you're interested in\n- **Key** = a representation of a word or token\n- **Value** = the information associated with the key\n\n> [!example] Attention helps models remember\n> In translation tasks, attention allows the model to recall earlier parts of the sentence, improving accuracy and fluency.\n\n- [ ] Understand how attention works in neural networks",
+  "prompt_tokens": 903,
+  "gen_tokens": 271,
+  "seconds": 13.53977918624878,
+  "finish": "stop",
+  "prompt_tps": 171.15037825885383,
+  "gen_tps": 32.91506321209509
+ },
+ {
+  "label": "write 2/6",
+  "output": "## Transformer Attention: How Words Find Each Other\n\nEach word in a sentence is represented by a vector $ x_i $ of size $ d_{\\text{model}} $. These vectors are then transformed using three learned linear maps:\n\n- **Query (Q)**: $ q_i = x_i W^Q $, resulting in an $ n \\times d_k $ matrix.\n- **Key (K)**: $ k_i = x_i W^K $, also $ n \\times d_k $.\n- **Value (V)**: $ v_i = x_i W^V $, $ n \\times d_v $.\n\n> [!tip] Remember:\n> **Query** = how much token i cares about token j  \n> **Key** = how much token j cares about token i  \n> **Value** = what information is in the value vector\n\n### The Attention Operation\n\nThe complete attention operation is:\n\n$$\n\\text{Attention}(Q, K, V) = \\text{softmax}(Q K^T / \\sqrt{d_k}) V\n$$\n\n- $ Q K^T $ is an $ n \\times n $ matrix where entry (i, j) measures how strongly token i attends to token j.\n- Softmax applied row by row converts each row into a probability distribution over the n positions.\n- Multiplying by $ V $ mixes the value vectors according to those probabilities.\n\n> [!example] A word might care about multiple words in a sentence  \n> For example, \"dog\" might care about \"ball\" and \"cat\" in a sentence like \"The dog chased the ball and the cat.\"\n\n### Why Divide by $ \\sqrt{d_k} $? \n\nThis normalization ensures that the attention weights are scaled appropriately. If components of $ q $ and $ k $ are independent with mean 0 and variance 1, their dot product has mean 0 and variance $ d_k $. For $ d_k = 64 $, scores typically have a standard deviation of 8, pushing softmax into a regime where one weight is close to 1 and the rest are close to 0.\n\n> [!warning] Saturated regime:  \n> Gradients become too small for learning to continue. This is why we need to normalize carefully.\n\n### Summary\n\n- **Query** tells how much token i cares about token j.\n- **Key** tells how much token j cares about token i.\n- **Value** holds the information from the value vector.\n- Softmax ensures that attention weights sum to 1, giving each word a fair chance of being selected.",
+  "prompt_tokens": 1039,
+  "gen_tokens": 533,
+  "seconds": 18.47754216194153,
+  "finish": "stop",
+  "prompt_tps": 417.5996689993441,
+  "gen_tps": 33.39363208949289
+ },
+ {
+  "label": "write 3/6",
+  "output": "## Transformer Attention: How Weights Get Smaller and Better Focused\n\nIn transformers, attention mechanisms help the model focus on relevant parts of the input. This process is guided by scaling to ensure fairness among different tokens.\n\n> [!tip] Remember:\n> **Scaling by $ 1/\\sqrt{d_k} $** restores unit variance and keeps the softmax in a well-behaved range.\n\n### Worked Example Explained\n\nLet\u2019s say we have three tokens with $ d_k = 4 $. The raw scores (before scaling) are: (8, 4, 0).\n\n- After scaling by $ 1/\\sqrt{4} = 0.5 $, the scores become: (4, 2, 0).\n- Now, the softmax calculation gives weights \u2248 (0.87, 0.12, 0.02).\n\n> [!example] Softmax highlights the most relevant token\n> Output for token 1 is $ 0.87 v_1 + 0.12 v_2 + 0.02 v_3 $: mostly its own value, with small contribution from token 2.\n\n### Without Scaling\n\nIf we don\u2019t scale, the raw scores would be \u2248 (0.98, 0.02, 0.00), which means the model places more weight on the first token and ignores the others \u2014 this is called a \"harder\" choice.\n\n- [ ] Prepare for next week's quiz",
+  "prompt_tokens": 902,
+  "gen_tokens": 314,
+  "seconds": 11.15206503868103,
+  "finish": "stop",
+  "prompt_tps": 359.0056062598016,
+  "gen_tps": 36.44791521778107
+ },
+ {
+  "label": "write 4/6",
+  "output": "## Self-Attention vs. Cross-Attention: How Models Understand Language\n\nIn encoder-decoder models, two types of attention mechanisms help the model understand and generate text.\n\n### Self-Attention\nSelf-attention occurs when **Q**, **K**, and **V** are all computed from the same sequence. Each token builds its own representation by gathering information from other tokens in the same sentence.\n\n> [!tip] Remember:\n> **Self-attention** = each token gathers info from others in the same sentence.\n\n### Cross-Attention\nCross-attention is used in the decoder. Queries come from the decoder, while keys and values come from the encoder's output.\n\n> [!example] Cross-attention helps the model understand context from earlier parts of the text.\n\n### Causal Mask\nTo prevent a language model from looking ahead during prediction, a **causal mask** is applied. Before the softmax, every score (i, j) with j > i is set to -\u221e, making those weights zero.\n\n> [!warning] This prevents the model from using future information but may not always be perfect.\n\n### Multi-Head Attention\nMulti-head attention processes multiple attention operations in parallel. Each head uses its own projection matrices $W_i^Q$, $W_i^K$, and $W_i^V$ to map into a smaller sub-space.\n\n> [!definition] Multi-head attention = multiple attention heads working together.\n\n### Final Output\nThe final output of all heads is concatenated and passed through a linear map $W^O$:  \n$$\n\\text{MultiHead}(Q, K, V) = \\text{Concat}(\\text{head}_1, ..., \\text{head}_h) W^O \\text{head}_i = \\text{Attention}(Q W_i^Q, K W_i^K, V W_i^V)\n$$\n\n> [!example] This allows the model to understand relationships between words in context.\n\n### Model Parameters\nIn the original base model:\n- $d_{\\text{model}} = 512$\n- $h = 8$ heads\n- Each head uses $d_k = d_v = 512 / 8 = 64$\n\n> [!tip] The smaller sub-space helps with parallel processing.\n\n### Specialization of Heads\nEmpirically, different heads specialize in tasks like tracking previous tokens, linking pronouns to nouns, or following syntactic relations.\n\n> [!warning] Heads do not always have a clear or predictable meaning.\n\n### Cautions\nHeads do not always have a clear or predictable meaning. They can be specialized for specific tasks but may not always align with the overall context.",
+  "prompt_tokens": 1028,
+  "gen_tokens": 554,
+  "seconds": 19.577282190322876,
+  "finish": "stop",
+  "prompt_tps": 417.3406811703119,
+  "gen_tps": 32.43301857862743
+ },
+ {
+  "label": "write 5/6",
+  "output": "## Transformers: The Power of Attention and Cost Management\n\nTransformers use a special mechanism called **self-attention**, which makes them powerful in handling language. This method compares every word in a sentence with all others, leading to a huge computational cost.\n\n> [!tip] Self-attention is O(n\u00b2d)\n> For n = 1,000, there are one million entries per head; for n = 100,000, it would be ten billion entries.\n\nBut this is expensive. **Recurrent layers** (which help with context) cost O(n d\u00b2), and for large sequences, this becomes very costly. That's why early Transformers were limited to small contexts like 512 or 1,024 tokens.\n\n> [!example] Early Transformers had low context\n> Pinatubo's eruption blocked sunlight \u2014 but Transformers can handle much larger inputs.\n\nTo fix this, **pre-norm** (normalizing before sub-layers) makes deep models easier to train. Also, **FlashAttention** is a smart way to reduce memory usage by avoiding the full n x n matrix.\n\n> [!warning] FlashAttention saves memory\n> It\u2019s a memory-efficient exact kernel that avoids materialising the full n x n matrix.\n\n- Encoder-only models like BERT process the whole input at once.\n- Decoder-only models like GPT use causal masks for prediction.\n- Encoder-decoder models like T5 handle both halves well for translation and summarization.\n\n> [!example] Encoder-decoder is good for translation\n> T5 can translate from English to Spanish or vice versa.",
+  "prompt_tokens": 953,
+  "gen_tokens": 334,
+  "seconds": 12.563868045806885,
+  "finish": "stop",
+  "prompt_tps": 427.452689217897,
+  "gen_tps": 32.40200632342292
+ },
+ {
+  "label": "write 5/6 (retry: example words)",
+  "output": "## How Transformers Handle Attention and Computational Cost: A Story of Complexity and Efficiency\n\nTransformers are powerful models because they efficiently handle attention and computation, but understanding how they work requires breaking down key ideas.\n\n### Self-Attention Mechanism: Comparing Every Token\n\n- **Self-attention** compares every token with every other token in a sequence.  \n- For a sequence of length $ n $, this leads to a time and memory complexity of $ O(n^2 d) $, where $ d $ is the dimension of each token.  \n- When $ n = 1,000 $, there are one million entries per head; when $ n = 100,000 $, it becomes ten billion entries.\n\n### Recurrent Layers: Sequential Computation\n\n- **Recurrent layers** cost $ O(n d^2) $ but must be computed sequentially.  \n- This means that for large sequences, the computation can become very expensive and time-consuming.\n\n### Early Transformers Were Limited by Quadratic Cost\n\n- The quadratic cost is the main reason early Transformers were limited to contexts of 512 or 1,024 tokens.  \n- With larger sequences, the computational burden becomes too high, making it impractical.\n\n### Pre-Norm: Making Deep Stacks Easier\n\n- **Pre-norm** (normalisation before sub-layer) makes very deep stacks easier to train.  \n- This helps in stabilising training and reducing variance in gradients during deeper networks.\n\n### Encoder-Only vs. Decoder-Only Models\n\n- **Encoder-only models** like BERT see the whole input at once and are suited for classification and retrieval.  \n- **Decoder-only models** like GPT family use a causal mask, which allows them to predict the next token based on previous ones.\n\n### Encoder-Decoder: Translation and Summarization\n\n- **Encoder-decoder** models like T5 keep both halves and are natural for translation and summarization.  \n- This structure allows for bidirectional processing and better performance in tasks requiring understanding of context.\n\n### FlashAttention: Memory-Efficient Exact Kernel\n\n- **FlashAttention** is a memory-efficient exact kernel that avoids materialising the full $ n \\times n $ matrix.  \n- It significantly reduces memory usage, making it feasible for large sequences without sacrificing accuracy.\n\n---\n\n## Table Comparing Costs and Efficiency\n\n| Task | Cost (O(n\u00b2d)) | FlashAttention | Notes |\n|-----|----------------|------------------|-------|\n| Self-attention | High | Low | For large n |\n| Recurrent layers | Very high | Moderate | Sequential computation |\n| Pre-norm | Low | No | Easier training |\n\n---\n\n## To Do List\n\n- [ ] Understand how self-attention works in practice\n- [ ] Learn why pre-norm helps with deep models\n- [ ] Compare the cost of encoder vs. decoder models\n- [ ] Explore how FlashAttention reduces memory usage",
+  "prompt_tokens": 494,
+  "gen_tokens": 604,
+  "seconds": 19.24293804168701,
+  "finish": "stop",
+  "prompt_tps": 401.75756736606775,
+  "gen_tps": 33.586691429843626
+ },
+ {
+  "label": "write 6/6",
+  "output": "## Transformers: How They Focus on Words and Save Computation\n\nTransformers are powerful models that help computers understand text by focusing on words and their relationships. Let's break down how they work.\n\n### Attention Mechanism\nDuring generation, the decoder-only model uses a \"KV cache\" to store keys and values from previous tokens. This means each new token only needs one new row of attention scores, which saves computation.\n\n- **Positional encodings** restore word-order information, so the model knows the order of words in a sentence.\n- **Multiple heads** allow the model to attend to several relationships at once, improving understanding of different parts of a sentence.\n\n> [!tip] Remember:\n> **KV cache** = stores key and value for quick access  \n> **Positional encodings** = restore word order\n\n### Scaling and Attention\nThe cost of full self-attention is quadratic in sequence length. This means that as the input grows, the computation becomes more expensive.\n\n- **Scaling by sqrt(d_k)** prevents the softmax from saturating, making it more efficient.\n- **Attention** computes a weighted average of value vectors using weights from a softmax over query-key similarities.\n\n### Blocks and Computation\nEach block consists of attention and feed-forward (FFN) layers with residual connections and LayerNorm.\n\n> [!example] A large sentence has many score entries per head  \nFor a sequence of length n, the score matrix has n\u00b2 entries per head.\n\n### Exercises\n1. With scores (6, 6, 0) and d_k = 9, which tokens receive the largest weights?\n   - The token with score 6 will get the largest weight since it's the highest in the list.\n2. Why can't a model without positional encodings distinguish \"dog bites man\" from \"man bites dog\"?\n   - The model cannot recognize word order, so it doesn\u2019t know which sentence comes first.\n\n### Summary\n- For a sequence of length n, the score matrix has n\u00b2 entries per head.\n- Modern models use **pre-norm** and efficient attention mechanisms like FlashAttention to save computation.\n\n> [!warning] Don't forget:\n> **Pre-norm** = adds residual connection before LayerNorm  \n> **FlashAttention** = avoids full matrix materialization",
+  "prompt_tokens": 969,
+  "gen_tokens": 468,
+  "seconds": 16.635092973709106,
+  "finish": "stop",
+  "prompt_tps": 421.13163807930886,
+  "gen_tps": 32.71464479888514
+ },
+ {
+  "label": "open",
+  "output": "# How Transformers Make Language Models Smart and Fast\n\nThe number of possible sequences in language is astronomical \u2014 there are infinitely many ways to combine words into sentences. But with transformers, we can focus on what's relevant and ignore what's not. This note explains how transformers help models understand and generate text efficiently.\n\n> [!summary] Overview  \n> Transformations like self-attention and multi-head attention allow models to focus on relevant parts of the input. Self-attention compares every token with every other in a sequence, while cross-attention helps in decoding. The KV cache saves computation during generation, and positional encodings restore word order. Transformers balance efficiency and effectiveness by reducing quadratic complexity through careful scaling and parallel processing.",
+  "prompt_tokens": 1790,
+  "gen_tokens": 144,
+  "seconds": 9.809154987335205,
+  "finish": "stop",
+  "prompt_tps": 368.01199008886385,
+  "gen_tps": 29.285736148329665
+ },
+ {
+  "label": "close",
+  "output": "## Key takeaways\n- **Self-attention** allows models to attend to all tokens simultaneously, improving performance and efficiency over sequential models.\n\n## Review questions\n> [!question] Why did recurrent neural networks become less popular compared to attention-based methods?\n> **Answer:** Recurrent neural networks have sequential computation and lose early-token relevance, while attention mechanisms provide a more efficient and effective way of modeling relationships between tokens.\n\n> [!question] What is the purpose of scaling by $ 1/\\sqrt{d_k} $ in attention mechanisms?\n> **Answer:** Scaling by $ 1/\\sqrt{d_k} $ restores unit variance and keeps the softmax in a well-behaved range.\n\n> [!question] How does multi-head attention improve model performance?\n> **Answer:** Multi-head attention processes multiple attention operations in parallel, allowing the model to attend to different parts of the input simultaneously.\n\n> [!question] What is the role of positional encodings in transformers?\n> **Answer:** Positional encodings restore word-order information, which is crucial for understanding context in sequence models.",
+  "prompt_tokens": 1384,
+  "gen_tokens": 222,
+  "seconds": 11.128614902496338,
+  "finish": "stop",
+  "prompt_tps": 362.8825234384168,
+  "gen_tps": 30.465321068610862
+ }
+]
