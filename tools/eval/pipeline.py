@@ -1420,3 +1420,42 @@ def run_v11(llm, sources, style="summary", language="auto", cfg=None, log=print)
     finally:
         llm.chat = orig_chat
         globals()["_small_allowed"] = None
+
+
+
+# ----------------------------------------------------------------------------- v12 = v11 + example-keyword leak check
+
+EXAMPLE_WORDS = ["ภูเขาไฟ", "ลาวา", "แมกมา", "ปินาตูโบ", "ฟูจิ", "ฮาวาย", "volcano", "lava", "magma", "pinatubo", "fuji", "hawaii"]
+
+
+def leaked_words(text, source_lower):
+    t = text.lower()
+    return [w for w in EXAMPLE_WORDS if w in t and w not in source_lower]
+
+
+def drop_leaked_lines(text, source_lower):
+    out = []
+    for line in text.split("\n"):
+        if leaked_words(line, source_lower) and not line.startswith("#"):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def run_v12(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    source_lower = "\n".join(s_["text"] for s_ in sources).lower()
+    orig_chat = llm.chat
+
+    def chat12(system, user, max_tokens, **kw):
+        out, cut = orig_chat(system, user, max_tokens, **kw)
+        if kw.get("history") and leaked_words(out, source_lower):
+            kw2 = dict(kw, history=(), label=kw.get("label", "") + " (retry: example words)")
+            out, cut = orig_chat(system, user, max_tokens, **kw2)
+        return drop_leaked_lines(out, source_lower), cut
+
+    llm.chat = chat12
+    try:
+        note = run_v11(llm, sources, style, language, cfg, log)
+    finally:
+        llm.chat = orig_chat
+    return drop_leaked_lines(note, source_lower)
