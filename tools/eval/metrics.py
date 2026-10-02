@@ -5,15 +5,15 @@ import sys
 FILLERS = ["อ่ะ", "เอ่อ", "นะครับ", "ใช่มั้ย", "โอเค", "เดี๋ยว", "uh ", "um "]
 
 
-def grams(text, n=14):
+def grams(text, n=14, step=1):
     t = re.sub(r"\s+", "", text)
-    return {t[i:i + n] for i in range(0, max(0, len(t) - n + 1), 3)}
+    return {t[i:i + n] for i in range(0, max(0, len(t) - n + 1), step)}
 
 
 def report(note, source):
     body = "\n".join(l for l in note.split("\n") if not l.startswith("<!--"))
     src = grams(source)
-    ng = grams(body)
+    ng = grams(body, step=3)
     copy = len(ng & src) / max(1, len(ng))
     heads = [l.strip() for l in body.split("\n") if l.startswith("#")]
     dup_heads = len(heads) - len(set(heads))
