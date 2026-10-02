@@ -1,0 +1,29 @@
+[
+ {
+  "label": "explain 1/1",
+  "prompt_tokens": 2482,
+  "gen_tokens": 780,
+  "seconds": 43.72760820388794,
+  "finish": "stop",
+  "prompt_tps": 210.24650799514293,
+  "gen_tps": 24.454601351336986
+ },
+ {
+  "label": "open",
+  "prompt_tokens": 1172,
+  "gen_tokens": 132,
+  "seconds": 8.936034202575684,
+  "finish": "stop",
+  "prompt_tps": 316.94367137449285,
+  "gen_tps": 25.32605051950079
+ },
+ {
+  "label": "close",
+  "prompt_tokens": 1164,
+  "gen_tokens": 470,
+  "seconds": 21.36766219139099,
+  "finish": "stop",
+  "prompt_tps": 315.08972548214473,
+  "gen_tps": 26.632920301127655
+ }
+]

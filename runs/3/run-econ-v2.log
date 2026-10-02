@@ -1,0 +1,4 @@
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 1754.33it/s]
+backend: mlx
+<!-- job=econ-v2 backend=mlx seconds=221 calls=6 prompt_tokens=15803 gen_tokens=3174 source_chars=15167 source_tokens=7396 note_chars=6238 metrics={'chars': 6238, 'copy_ratio': 0.375, 'fillers': 2, 'dup_headings': 3, 'sections': 6, 'callouts': 11} -->
+

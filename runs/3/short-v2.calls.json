@@ -1,0 +1,11 @@
+[
+ {
+  "label": "short",
+  "prompt_tokens": 583,
+  "gen_tokens": 193,
+  "seconds": 14.965950012207031,
+  "finish": "stop",
+  "prompt_tps": 82.37403476063008,
+  "gen_tps": 24.58569090178325
+ }
+]

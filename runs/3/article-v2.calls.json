@@ -1,0 +1,38 @@
+[
+ {
+  "label": "explain 1/2",
+  "prompt_tokens": 2361,
+  "gen_tokens": 303,
+  "seconds": 27.577017068862915,
+  "finish": "stop",
+  "prompt_tps": 184.10333825083322,
+  "gen_tps": 20.58233086032325
+ },
+ {
+  "label": "explain 2/2",
+  "prompt_tokens": 1916,
+  "gen_tokens": 593,
+  "seconds": 34.34693789482117,
+  "finish": "stop",
+  "prompt_tps": 295.7322011511872,
+  "gen_tps": 21.302844615901808
+ },
+ {
+  "label": "open",
+  "prompt_tokens": 1121,
+  "gen_tokens": 177,
+  "seconds": 11.985990047454834,
+  "finish": "stop",
+  "prompt_tps": 284.6594579823793,
+  "gen_tps": 22.078759603729722
+ },
+ {
+  "label": "close",
+  "prompt_tokens": 1113,
+  "gen_tokens": 437,
+  "seconds": 20.943915128707886,
+  "finish": "stop",
+  "prompt_tps": 280.4720397347988,
+  "gen_tps": 25.78246302920971
+ }
+]
