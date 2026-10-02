@@ -98,7 +98,8 @@ final class GenerationJob {
 
             // Numbers the sources actually mention. Facts or note lines with any other number are made up
             // (a 3B model "calculates" profits and paybacks wrongly) and are dropped.
-            let allowed = Grounding.numbers(in: texts.joined(separator: "\n"))
+            let sourceText = texts.joined(separator: "\n")
+            let allowed = Grounding.numbers(in: sourceText).union(Grounding.smallNumbers(in: sourceText))
             let note: String
             if corpus.count < NotePrompts.shortCharacters {
                 note = try await shortNote(corpus, kit: kit, allowed: allowed)
@@ -146,7 +147,7 @@ final class GenerationJob {
         phase = .reading(1, 1)
         progress = 0.1
         let factsText = try await ask(
-            system: kit.factsSystem, prompt: kit.factsPrompt(corpus), maxTokens: 500, temperature: 0.2,
+            system: kit.factsSystem, prompt: kit.factsPrompt(corpus), maxTokens: 500, temperature: 0,
             example: kit.factsExample
         ) { [weak self] partial in self?.output = partial }
         var facts = FactList.parse(factsText)
@@ -154,7 +155,7 @@ final class GenerationJob {
         phase = .writing(1, 1)
         progress = 0.5
         var section = try await ask(
-            system: kit.writeSystem(short: true), prompt: kit.writePrompt(facts.text), maxTokens: 600, temperature: 0.3,
+            system: kit.writeSystem(short: true), prompt: kit.writePrompt(facts.text), maxTokens: 600, temperature: 0.15,
             example: kit.writeExample
         ) { [weak self] partial in self?.output = partial }
         section = NoteCleaner.clean(section)
@@ -200,7 +201,7 @@ final class GenerationJob {
             try Task.checkCancellation()
             phase = .reading(index + 1, chunks.count)
             let raw = try await ask(
-                system: kit.factsSystem, prompt: kit.factsPrompt(chunk), maxTokens: 700, temperature: 0.2,
+                system: kit.factsSystem, prompt: kit.factsPrompt(chunk), maxTokens: 700, temperature: 0,
                 example: kit.factsExample
             ) { [weak self] partial in self?.output = partial }
             tick()
@@ -255,7 +256,7 @@ final class GenerationJob {
             let facts = (unit.topic.isEmpty ? "" : "TOPIC: \(unit.topic)\n") + unit.facts.joined(separator: "\n")
             let prefix = finished
             var section = try await ask(
-                system: kit.writeSystem(short: false), prompt: kit.writePrompt(facts), maxTokens: 1000, temperature: 0.3,
+                system: kit.writeSystem(short: false), prompt: kit.writePrompt(facts), maxTokens: 1000, temperature: 0.15,
                 example: kit.writeExample
             ) { [weak self] partial in self?.output = prefix + partial }
             tick()
@@ -272,7 +273,7 @@ final class GenerationJob {
         let body = sections.joined(separator: "\n\n")
         let outline = SectionTools.outline(sections, perSection: max(200, 5000 / max(1, sections.count)))
         var opening = try await ask(
-            system: kit.openSystem, prompt: kit.openPrompt(outline), maxTokens: 700, temperature: 0.4,
+            system: kit.openSystem, prompt: kit.openPrompt(outline), maxTokens: 700, temperature: 0.3,
             example: kit.openExample
         ) { [weak self] partial in self?.output = partial + "\n\n" + body }
         tick()
@@ -280,7 +281,7 @@ final class GenerationJob {
         if !SectionTools.hasHook(opening) {
             // The model sometimes skips the hook and goes straight to the overview: ask for it on its own.
             var hook = try await llm.generate(
-                system: kit.openSystem, prompt: kit.hookPrompt(outline), maxTokens: 250, temperature: 0.5
+                system: kit.openSystem, prompt: kit.hookPrompt(outline), maxTokens: 250, temperature: 0.3
             )
             hook = NoteCleaner.clean(hook).components(separatedBy: "\n\n").first ?? ""
             if !hook.isEmpty {
@@ -299,7 +300,7 @@ final class GenerationJob {
         let frontAndBody = opening + "\n\n" + body
         let ending = try await llm.generate(
             system: kit.closeSystem, prompt: kit.closePrompt(FactList.sample(allFacts, maxCharacters: 5000)),
-            maxTokens: 1000, temperature: 0.3
+            maxTokens: 1000, temperature: 0.2
         ) { [weak self] partial in self?.output = frontAndBody + "\n\n" + partial }
         tick()
         remaining = nil
@@ -386,6 +387,7 @@ struct NotePrompts {
     var openSystem: String {
         "You write the opening of study notes. " + (thai ? "Write in Thai (ภาษาไทย)." : "Write in English.")
             + " Use only what is in the outline. Never mention 'the outline', 'the transcript' or 'the speaker'."
+            + " Every claim in the hook and the overview must be stated in the outline — do not add causes, numbers or advice of your own."
     }
 
     private static let openTask = "Write the opening of this note: a \"# \" title, a hook paragraph that makes people want to read on "

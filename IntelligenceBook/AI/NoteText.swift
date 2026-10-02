@@ -299,6 +299,14 @@ enum Grounding {
     private static let number = try! NSRegularExpression(pattern: "\\d[\\d,]*(?:\\.\\d+)?")
 
     /// Every number in the text, without thousands separators ("12,000" → "12000").
+    private static let thaiSmall = ["2": "สอง", "3": "สาม", "4": "สี่", "5": "ห้า", "6": "หก", "7": "เจ็ด", "8": "แปด", "9": "เก้า", "10": "สิบ"]
+
+    /// Numbers 2–10 the sources mention, as digits or Thai words (Thai speech keeps small numbers as words).
+    static func smallNumbers(in text: String) -> Set<String> {
+        let digits = numbers(in: text)
+        return Set(thaiSmall.filter { digits.contains($0.key) || text.contains($0.value) }.map(\.key))
+    }
+
     static func numbers(in text: String) -> Set<String> {
         let ns = text as NSString
         var out = Set<String>()
@@ -317,9 +325,12 @@ enum Grounding {
     }
 
     /// Numbers up to 10 are counts and list positions ("2 types") — only larger ones are checked.
+    /// `allowed` holds every number of the sources plus the small ones they say in words (see `smallNumbers`).
+    /// Numbers 0–1 and list positions are never checked; 2–10 are checked only against Thai words/digits.
     static func isUngrounded(_ text: String, allowed: Set<String>) -> Bool {
         numbers(in: text).contains { value in
-            guard let v = Double(value), v > 10 else { return false }
+            guard let v = Double(value), v >= 2 else { return false }
+            if v <= 10, thaiSmall[value] == nil { return false }
             return !allowed.contains(value)
         }
     }

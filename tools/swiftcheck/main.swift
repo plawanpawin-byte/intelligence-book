@@ -48,7 +48,7 @@ check("facts", parsed.facts.joined(separator: "\n"), "- determinants of demand:\
 
 let note = "## X\nราคาข้าว 10 บาท ดุลยภาพ 150 บาท\n> [!example] ตัวอย่าง\n> อุปสงค์จะเท่ากับ 100 กิโลกรัม\nok line 2 แบบ\n| a | b |\n|---|---|\n| x | 999 |\n### [!question] คำถาม\n**คำตอบ:** ตอบ"
 check("grounding+fixer",
-      MarkdownFixer.fix(Grounding.dropUngroundedNumbers(note, allowed: ["150", "600"]), thai: true),
+      MarkdownFixer.fix(Grounding.dropUngroundedNumbers(note, allowed: ["150", "600", "10", "2"]), thai: true),
       "## X\nราคาข้าว 10 บาท ดุลยภาพ 150 บาท\nok line 2 แบบ\n\n> [!question] คำถาม\n> **คำตอบ:** ตอบ")
 check("numbers", Grounding.numbers(in: "ราคา 12,000 บาท และ 0.50 กับ 3.").sorted().joined(separator: ","), "0.5,0.50,12000,3")
 check("summary title", MarkdownFixer.fix("> [!summary]\n> ok", thai: false), "> [!summary] Overview\n> ok")
@@ -88,6 +88,12 @@ let shortAllowed = Grounding.numbers(in: SourceCleaner.speech("ถ้าขา�
 let madeUp = Grounding.isUngrounded("- กำไรต่อวัน 1,750 บาท - 18 บาท = 1,732 บาท", allowed: shortAllowed)
 let real = Grounding.isUngrounded("- เครื่องชงมือสองประมาณ 12,000 บาท", allowed: shortAllowed)
 check("fact grounding", "\(madeUp) \(real)", "true false")
+
+let smallAllowed = Grounding.smallNumbers(in: "นอนแปดชั่วโมงประมาณห้ารอบ")
+check("small numbers", smallAllowed.sorted().joined(separator: ","), "5,8")
+let inventedSmall = Grounding.isUngrounded("ดื่มก่อนนอน 2 ชั่วโมง", allowed: smallAllowed)
+let realSmall = Grounding.isUngrounded("นอน 8 ชั่วโมง ประมาณ 5 รอบ และขั้นที่ 1", allowed: smallAllowed)
+check("small grounding", "\(inventedSmall) \(realSmall)", "true false")
 
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
 exit(failed == 0 ? 0 : 1)

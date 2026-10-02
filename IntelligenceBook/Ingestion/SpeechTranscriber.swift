@@ -71,7 +71,9 @@ enum SpeechTranscriber {
         let format = file.processingFormat
         let totalFrames = file.length
         guard totalFrames > 0 else { throw AppError.message("The audio file is empty") }
-        let sliceFrames = AVAudioFramePosition(format.sampleRate * 50)
+        // Slices of 40–58 s, each ending in the quietest moment of its last 18 s, so words aren't cut in half.
+        let minFrames = AVAudioFramePosition(format.sampleRate * 40)
+        let maxFrames = AVAudioFramePosition(format.sampleRate * 58)
 
         var pieces: [String] = []
         var start: AVAudioFramePosition = 0
@@ -80,19 +82,17 @@ enum SpeechTranscriber {
         var onDevice = false
         while start < totalFrames {
             try Task.checkCancellation()
-            let count = min(sliceFrames, totalFrames - start)
+            var count = min(maxFrames, totalFrames - start)
             file.framePosition = start
-
-            var buffers: [AVAudioPCMBuffer] = []
-            var remaining = count
-            while remaining > 0 {
-                let frames = AVAudioFrameCount(min(remaining, 16_384))
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { break }
-                try file.read(into: buffer, frameCount: frames)
-                if buffer.frameLength == 0 { break }
-                buffers.append(buffer)
-                remaining -= AVAudioFramePosition(buffer.frameLength)
+            guard let slice = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)) else { break }
+            try file.read(into: slice, frameCount: AVAudioFrameCount(count))
+            if slice.frameLength == 0 { break }
+            count = AVAudioFramePosition(slice.frameLength)
+            if start + count < totalFrames, count > minFrames {
+                count = quietestCut(in: slice, from: minFrames, sampleRate: format.sampleRate)
+                slice.frameLength = AVAudioFrameCount(count)
             }
+            let buffers = [slice]
 
             func makeRequest(onDevice: Bool) -> SFSpeechAudioBufferRecognitionRequest {
                 let request = SFSpeechAudioBufferRecognitionRequest()
@@ -120,6 +120,26 @@ enum SpeechTranscriber {
             await progress(Double(start) / Double(totalFrames))
         }
         return pieces.joined(separator: "\n")
+    }
+
+    /// Frame index of the quietest 0.2 s window after `from` (where the slice should end).
+    private static func quietestCut(in buffer: AVAudioPCMBuffer, from: AVAudioFramePosition, sampleRate: Double) -> AVAudioFramePosition {
+        let total = AVAudioFramePosition(buffer.frameLength)
+        guard let data = buffer.floatChannelData?[0] else { return total }
+        let window = max(1, AVAudioFramePosition(sampleRate * 0.2))
+        var best = total
+        var bestEnergy = Float.greatestFiniteMagnitude
+        var position = from
+        while position + window <= total {
+            var sum: Float = 0
+            for i in Int(position)..<Int(position + window) { sum += data[i] * data[i] }
+            if sum < bestEnergy {
+                bestEnergy = sum
+                best = position + window / 2
+            }
+            position += window
+        }
+        return best
     }
 
     private static func recognize(_ request: SFSpeechAudioBufferRecognitionRequest, with recognizer: SFSpeechRecognizer) async throws -> String {
@@ -158,7 +178,12 @@ enum SpeechTranscriber {
 final class LiveTranscriber: @unchecked Sendable {
     private let recognizer: SFSpeechRecognizer?
     private let sampleRate: Double
-    private let segmentFrames: AVAudioFramePosition
+    /// A piece is closed at the first pause after `minSegmentFrames`, and at the latest at `maxSegmentFrames`
+    /// (Apple's recogniser handles about a minute per request). Cutting in a pause keeps words whole.
+    private let minSegmentFrames: AVAudioFramePosition
+    private let maxSegmentFrames: AVAudioFramePosition
+    /// Short-term loudness of quiet audio, learned from the recording (pause detection).
+    private var quietLevel: Float = 0.01
     private let lock = NSLock()
 
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -177,7 +202,8 @@ final class LiveTranscriber: @unchecked Sendable {
         recognizer?.queue = OperationQueue()
         self.recognizer = (recognizer?.isAvailable ?? false) ? recognizer : nil
         self.sampleRate = sampleRate
-        self.segmentFrames = AVAudioFramePosition(sampleRate * 50)
+        self.minSegmentFrames = AVAudioFramePosition(sampleRate * 40)
+        self.maxSegmentFrames = AVAudioFramePosition(sampleRate * 58)
     }
 
     var finishedPieces: Int {
@@ -192,12 +218,25 @@ final class LiveTranscriber: @unchecked Sendable {
         if request == nil { startSegment(recognizer) }
         let current = request
         frames += AVAudioFramePosition(buffer.frameLength)
-        let rollOver = frames - segmentStart >= segmentFrames
+        let level = Self.rms(buffer)
+        // Slowly track the background level; a buffer close to it counts as a pause.
+        quietLevel = level < quietLevel ? level : quietLevel * 0.995 + level * 0.005
+        let length = frames - segmentStart
+        let isPause = level < max(quietLevel * 1.8, 0.004)
+        let rollOver = length >= maxSegmentFrames || (length >= minSegmentFrames && isPause)
         if rollOver { request = nil }
         lock.unlock()
 
         current?.append(buffer)
         if rollOver { current?.endAudio() }
+    }
+
+    private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
+        guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 1 }
+        let n = Int(buffer.frameLength)
+        var sum: Float = 0
+        for i in 0..<n { sum += data[i] * data[i] }
+        return (sum / Float(n)).squareRoot()
     }
 
     /// Must be called with the lock held.
