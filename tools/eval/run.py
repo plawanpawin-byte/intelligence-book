@@ -18,6 +18,9 @@ def main():
     wanted = sys.argv[1:] or [j["id"] for j in jobs["jobs"]]
     out_dir = os.environ.get("EVAL_OUT", os.path.join(HERE, "out"))
     os.makedirs(out_dir, exist_ok=True)
+    for job in jobs["jobs"]:
+        if job["id"] in wanted and job.get("model"):
+            os.environ["EVAL_MODEL"] = job["model"]
     llm = make_backend()
     print("backend:", llm.name)
 

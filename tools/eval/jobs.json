@@ -7,34 +7,40 @@
  },
  "jobs": [
   {
-   "id": "econ-v13",
+   "id": "econ-q17",
    "case": "th_lecture_econ",
-   "pipeline": "v13"
+   "pipeline": "v13",
+   "model": "mlx-community/Qwen3-1.7B-4bit"
   },
   {
-   "id": "short-v13",
+   "id": "short-q17",
    "case": "th_short_recording",
-   "pipeline": "v13"
+   "pipeline": "v13",
+   "model": "mlx-community/Qwen3-1.7B-4bit"
   },
   {
-   "id": "talk-v13",
+   "id": "talk-q17",
    "case": "th_talk_medium",
-   "pipeline": "v13"
+   "pipeline": "v13",
+   "model": "mlx-community/Qwen3-1.7B-4bit"
   },
   {
-   "id": "article-v13",
+   "id": "article-q17",
    "case": "th_article",
-   "pipeline": "v13"
+   "pipeline": "v13",
+   "model": "mlx-community/Qwen3-1.7B-4bit"
   },
   {
-   "id": "paper-v13",
+   "id": "paper-q17",
    "case": "en_paper",
-   "pipeline": "v13"
+   "pipeline": "v13",
+   "model": "mlx-community/Qwen3-1.7B-4bit"
   },
   {
-   "id": "bio-v13",
+   "id": "bio-q17",
    "case": "th_lecture_bio_long",
-   "pipeline": "v13"
+   "pipeline": "v13",
+   "model": "mlx-community/Qwen3-1.7B-4bit"
   }
  ]
 }

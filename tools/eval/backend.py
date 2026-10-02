@@ -32,7 +32,9 @@ class MLXBackend:
 
     def __init__(self):
         from mlx_lm import load
-        self.model, self.tokenizer = load(MLX_REPO)
+        self.repo = os.environ.get("EVAL_MODEL") or MLX_REPO
+        self.name = "mlx:" + self.repo.split("/")[-1]
+        self.model, self.tokenizer = load(self.repo)
         self.stats = Stats()
 
     def count_tokens(self, text):
@@ -46,7 +48,8 @@ class MLXBackend:
         for u, a in history:
             msgs += [{"role": "user", "content": u}, {"role": "assistant", "content": a}]
         msgs.append({"role": "user", "content": user})
-        prompt = self.tokenizer.apply_chat_template(msgs, add_generation_prompt=True)
+        extra = {"enable_thinking": False} if "qwen3" in self.repo.lower() else {}
+        prompt = self.tokenizer.apply_chat_template(msgs, add_generation_prompt=True, **extra)
         sampler = make_sampler(temp=temperature, top_p=top_p)
         procs = make_logits_processors(repetition_penalty=rep_penalty, repetition_context_size=rep_ctx) \
             if rep_penalty and rep_penalty != 1.0 else None
