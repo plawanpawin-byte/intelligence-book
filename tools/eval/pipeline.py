@@ -1459,3 +1459,39 @@ def run_v12(llm, sources, style="summary", language="auto", cfg=None, log=print)
     finally:
         llm.chat = orig_chat
     return drop_leaked_lines(note, source_lower)
+
+
+
+# ----------------------------------------------------------------------------- v13 = v12 + concept words of the example, no English sentences in ( )
+
+EXAMPLE_WORDS += ["หนืด", "ปะทุ", "แก๊ส", "viscous", "viscosity", "erupt", "ooze"]
+EN_PAREN = re.compile(r"\s*\((?=[^()]*[A-Za-z])[^()฀-๿]{0,400}\)")
+
+
+def strip_english_sentences(text):
+    """In a Thai note, drops parentheses holding an English sentence (5+ words); keeps short terms like (hippocampus)."""
+    def repl(m):
+        inner = m.group(0)
+        return "" if len(re.findall(r"[A-Za-z]+", inner)) >= 5 else inner
+    return EN_PAREN.sub(repl, text)
+
+
+TERMS_RULE = " Put English only for single technical terms in parentheses; never translate whole sentences."
+
+
+def run_v13(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    orig_chat = llm.chat
+
+    def chat13(system, user, max_tokens, **kw):
+        if "ภาษาไทย" in system:
+            system = system + TERMS_RULE
+        return orig_chat(system, user, max_tokens, **kw)
+
+    llm.chat = chat13
+    try:
+        note = run_v12(llm, sources, style, language, cfg, log)
+    finally:
+        llm.chat = orig_chat
+    if is_thai(note):
+        note = strip_english_sentences(note)
+    return note
