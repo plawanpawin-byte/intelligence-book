@@ -64,8 +64,8 @@ let chunks = TextChunker.split(String(repeating: "ก ข ค ง ", count: 2000
 check("chunker sizes", String(chunks.allSatisfy { $0.count <= 3500 + 1100 } && chunks.count >= 2), "true")
 check("chunker keeps text", String(chunks.joined(separator: " ").filter { !$0.isWhitespace }.count), String(8000))
 
-check("merge", SectionTools.merge(["## A\n\nfirst body text that is long enough to keep here", "## A\n\nsecond body text that is long enough to keep", "## B\n\nx"]).joined(separator: "|"),
-      "## A\n\nfirst body text that is long enough to keep here\n\nsecond body text that is long enough to keep")
+check("merge", SectionTools.merge(["## A\n\nfirst body text that is long enough to keep here", "## A\n\nsecond body text that is long enough to keep too", "## B\n\nx"]).joined(separator: "|"),
+      "## A\n\nfirst body text that is long enough to keep here\n\nsecond body text that is long enough to keep too")
 check("thai detect", String(LanguageDetector.isThai("อุปสงค์ demand คือ")), "true")
 
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
