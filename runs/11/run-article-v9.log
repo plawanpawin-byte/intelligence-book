@@ -1,0 +1,4 @@
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Fetching 6 files: 100%|██████████| 6/6 [00:00<00:00, 1246.88it/s]
+backend: mlx
+<!-- job=article-v9 backend=mlx seconds=229 calls=6 prompt_tokens=10140 gen_tokens=3467 source_chars=5468 source_tokens=2575 note_chars=4920 metrics={'chars': 4920, 'copy_ratio': 0.276, 'fillers': 0, 'dup_headings': 0, 'sections': 4, 'callouts': 8} -->
+
