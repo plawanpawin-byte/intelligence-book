@@ -6,13 +6,18 @@ import MLXLLM
 enum LlamaVariant: String, CaseIterable, Identifiable {
     case b1 = "1b"
     case b3 = "3b"
+    /// Qwen3 1.7B — for 4 GB iPhones (iPhone 13 and older), where the 3B model runs out of memory.
+    case qwen17 = "qwen3-1.7b"
 
     var id: String { rawValue }
+
+    var isQwen: Bool { self == .qwen17 }
 
     var displayName: String {
         switch self {
         case .b1: "Apple Foundation Models 1B"
         case .b3: "Apple Foundation Models 3B"
+        case .qwen17: "Apple Foundation Models 1.7B"
         }
     }
 
@@ -20,6 +25,7 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
         switch self {
         case .b1: "mlx-community/Llama-3.2-1B-Instruct-4bit"
         case .b3: "mlx-community/Llama-3.2-3B-Instruct-4bit"
+        case .qwen17: "mlx-community/Qwen3-1.7B-4bit"
         }
     }
 
@@ -27,6 +33,7 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
         switch self {
         case .b1: LLMRegistry.llama3_2_1B_4bit
         case .b3: LLMRegistry.llama3_2_3B_4bit
+        case .qwen17: LLMRegistry.qwen3_1_7b_4bit
         }
     }
 
@@ -35,6 +42,7 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
         switch self {
         case .b1: "≈ 0.7 GB"
         case .b3: "≈ 1.8 GB"
+        case .qwen17: "≈ 1.0 GB"
         }
     }
 
@@ -43,6 +51,7 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
         switch self {
         case .b1: 3
         case .b3: 6
+        case .qwen17: 4
         }
     }
 
@@ -51,14 +60,14 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
     var chunkCharacters: Int {
         switch self {
         case .b1: 6_000
-        case .b3: 10_000
+        case .b3, .qwen17: 10_000
         }
     }
 
     var maxOutputTokens: Int {
         switch self {
         case .b1: 1_500
-        case .b3: 2_200
+        case .b3, .qwen17: 2_200
         }
     }
 }
@@ -68,8 +77,12 @@ enum DeviceProfile {
 
     static var processorCount: Int { ProcessInfo.processInfo.activeProcessorCount }
 
-    /// The app always runs Llama 3.2 3B (shown as "Apple Foundation Models 3B"), on every device.
+    /// Llama 3.2 3B ("Apple Foundation Models 3B") on every iPhone. (Qwen3 1.7B was tried for 4 GB phones and
+    /// invented far more than 3B in the note evaluation, so it is not used.)
     static let selected: LlamaVariant = .b3
+
+    /// 4 GB iPhones (iPhone 13 and older): the 3B model only just fits, so the pipeline uses less memory there.
+    static var isLowMemory: Bool { ramGB < 5 }
 
     /// Frees the space of a 1B model downloaded by older builds.
     static func removeUnusedDownloads() {

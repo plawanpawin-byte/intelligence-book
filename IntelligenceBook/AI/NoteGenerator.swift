@@ -331,8 +331,9 @@ struct NotePrompts {
     let style: NoteStyle
 
     static let shortCharacters = 1_500
-    static let chunkCharacters = 2_000
-    static let groupCharacters = 1_500
+    /// Smaller pieces on 4 GB iPhones keep the prompt (and the memory it needs) small.
+    static var chunkCharacters: Int { DeviceProfile.isLowMemory ? 1_500 : 2_000 }
+    static var groupCharacters: Int { DeviceProfile.isLowMemory ? 1_100 : 1_500 }
     static let maxChunks = 40
 
     private var languageRule: String {

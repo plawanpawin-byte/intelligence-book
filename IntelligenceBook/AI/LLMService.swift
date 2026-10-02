@@ -152,6 +152,7 @@ final class LLMService {
             cut = stillCut
         }
         Memory.clearCache()
+        if let range = text.range(of: "</think>") { text = String(text[range.upperBound...]) }
         return RepetitionGuard.clean(text).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -173,19 +174,27 @@ final class LLMService {
         parameters.topP = 0.9
         parameters.repetitionPenalty = 1.1
         parameters.repetitionContextSize = 96
+        if DeviceProfile.isLowMemory {
+            // 4 GB iPhones: a 4-bit KV cache and smaller prefill steps keep the peak memory under iOS's limit.
+            parameters.kvBits = 4
+            parameters.prefill.stepSize = 128
+        }
+
+        // Qwen3 would "think" first (thousands of hidden tokens): turn that off.
+        let context: [String: any Sendable]? = loadedVariant?.isQwen == true ? ["enable_thinking": false] : nil
 
         // Worked examples go in as earlier chat turns: a small model copies the pattern without
         // mistaking the example for the material (which happens when the example is inside the prompt).
         let session: ChatSession
         if examples.isEmpty {
-            session = ChatSession(model, instructions: system, generateParameters: parameters)
+            session = ChatSession(model, instructions: system, generateParameters: parameters, additionalContext: context)
         } else {
             var history: [Chat.Message] = [.system(system)]
             for example in examples {
                 history.append(.user(example.user))
                 history.append(.assistant(example.assistant))
             }
-            session = ChatSession(model, history: history, generateParameters: parameters)
+            session = ChatSession(model, history: history, generateParameters: parameters, additionalContext: context)
         }
         var text = ""
         var lastCheck = 0
