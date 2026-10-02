@@ -42,8 +42,11 @@ struct GenerateView: View {
         .onChange(of: stage) { _, newStage in
             UIApplication.shared.isIdleTimerDisabled = newStage == .running
         }
+        .onDisappear {
+            // Never leave the 2 GB model sitting in memory after the sheet closes.
+            if stage != .running { LLMService.shared.unload() }
+        }
         .onAppear {
-            LLMService.shared.prewarm()
             if selected.isEmpty { selected = Set(notebook.readySources.map(\.uuid)) }
         }
         .onDisappear {

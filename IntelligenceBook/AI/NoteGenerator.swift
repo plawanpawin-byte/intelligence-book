@@ -79,6 +79,9 @@ final class GenerationJob {
 
     func run(sources: [SourceInput], style: NoteStyle, language: OutputLanguage) async {
         let llm = LLMService.shared
+        // The 3B model holds ~2–2.5 GB. Release it as soon as the note is done (or stopped), otherwise a 4 GB
+        // iPhone (e.g. iPhone 13) stays short of memory and the whole phone becomes sluggish.
+        defer { llm.unload() }
         output = ""
         progress = 0
         do {
