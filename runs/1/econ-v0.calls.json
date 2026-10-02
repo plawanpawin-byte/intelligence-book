@@ -1,0 +1,29 @@
+[
+ {
+  "label": "v0 extract 1",
+  "prompt_tokens": 4823,
+  "gen_tokens": 280,
+  "seconds": 43.42254686355591,
+  "finish": "length",
+  "prompt_tps": 167.54762505608386,
+  "gen_tps": 19.16353267336978
+ },
+ {
+  "label": "v0 extract 2",
+  "prompt_tokens": 2808,
+  "gen_tokens": 280,
+  "seconds": 22.527431964874268,
+  "finish": "length",
+  "prompt_tps": 292.2473924654421,
+  "gen_tps": 21.714919198482814
+ },
+ {
+  "label": "v0 write",
+  "prompt_tokens": 1133,
+  "gen_tokens": 554,
+  "seconds": 26.25482702255249,
+  "finish": "stop",
+  "prompt_tps": 289.5278751887885,
+  "gen_tps": 24.828001156015745
+ }
+]

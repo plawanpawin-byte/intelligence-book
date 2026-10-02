@@ -1,0 +1,119 @@
+[
+ {
+  "label": "study 1/7",
+  "prompt_tokens": 3207,
+  "gen_tokens": 619,
+  "seconds": 47.851099729537964,
+  "finish": "stop",
+  "prompt_tps": 187.91361264931055,
+  "gen_tps": 20.130122215695568
+ },
+ {
+  "label": "study 2/7",
+  "prompt_tokens": 3067,
+  "gen_tokens": 481,
+  "seconds": 35.45616102218628,
+  "finish": "stop",
+  "prompt_tps": 302.5940757796623,
+  "gen_tps": 19.01889212891949
+ },
+ {
+  "label": "study 3/7",
+  "prompt_tokens": 3240,
+  "gen_tokens": 650,
+  "seconds": 44.30683970451355,
+  "finish": "length",
+  "prompt_tps": 301.4598215304491,
+  "gen_tps": 19.38685301901771
+ },
+ {
+  "label": "study 4/7",
+  "prompt_tokens": 3312,
+  "gen_tokens": 650,
+  "seconds": 44.62845420837402,
+  "finish": "length",
+  "prompt_tps": 296.4139604935425,
+  "gen_tps": 19.445927196393143
+ },
+ {
+  "label": "study 5/7",
+  "prompt_tokens": 3271,
+  "gen_tokens": 650,
+  "seconds": 42.030948877334595,
+  "finish": "length",
+  "prompt_tps": 286.4742174736905,
+  "gen_tps": 21.254078596372857
+ },
+ {
+  "label": "study 6/7",
+  "prompt_tokens": 3214,
+  "gen_tokens": 650,
+  "seconds": 42.283193826675415,
+  "finish": "length",
+  "prompt_tps": 302.20142906390157,
+  "gen_tps": 20.560431199168075
+ },
+ {
+  "label": "study 7/7",
+  "prompt_tokens": 2971,
+  "gen_tokens": 509,
+  "seconds": 36.3328320980072,
+  "finish": "stop",
+  "prompt_tps": 281.91774840040915,
+  "gen_tps": 19.757889161450628
+ },
+ {
+  "label": "section 1/4",
+  "prompt_tokens": 1661,
+  "gen_tokens": 649,
+  "seconds": 37.67785406112671,
+  "finish": "stop",
+  "prompt_tps": 270.60657827818034,
+  "gen_tps": 20.600304893069975
+ },
+ {
+  "label": "section 2/4",
+  "prompt_tokens": 1914,
+  "gen_tokens": 473,
+  "seconds": 30.553473949432373,
+  "finish": "stop",
+  "prompt_tps": 298.51984884630906,
+  "gen_tps": 19.62415219393855
+ },
+ {
+  "label": "section 3/4",
+  "prompt_tokens": 1862,
+  "gen_tokens": 743,
+  "seconds": 41.85603475570679,
+  "finish": "stop",
+  "prompt_tps": 293.63835535699707,
+  "gen_tps": 20.93824779148418
+ },
+ {
+  "label": "section 4/4",
+  "prompt_tokens": 1229,
+  "gen_tokens": 694,
+  "seconds": 34.6223361492157,
+  "finish": "stop",
+  "prompt_tps": 279.5555260481812,
+  "gen_tps": 22.984015442961873
+ },
+ {
+  "label": "intro",
+  "prompt_tokens": 2903,
+  "gen_tokens": 217,
+  "seconds": 19.423848390579224,
+  "finish": "stop",
+  "prompt_tps": 297.7492062708469,
+  "gen_tps": 22.492813766265407
+ },
+ {
+  "label": "outro",
+  "prompt_tokens": 2873,
+  "gen_tokens": 539,
+  "seconds": 34.32692098617554,
+  "finish": "stop",
+  "prompt_tps": 298.4641355449469,
+  "gen_tps": 21.851559753810783
+ }
+]

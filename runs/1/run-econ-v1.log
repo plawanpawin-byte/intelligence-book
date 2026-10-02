@@ -1,0 +1,5 @@
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 6 files:  17%|█▋        | 1/6 [00:00<00:01,  4.07it/s]Fetching 6 files:  83%|████████▎ | 5/6 [00:08<00:01,  1.84s/it]Fetching 6 files: 100%|██████████| 6/6 [00:16<00:00,  3.25s/it]Fetching 6 files: 100%|██████████| 6/6 [00:16<00:00,  2.77s/it]
+backend: mlx
+<!-- job=econ-v1 backend=mlx seconds=218 calls=5 prompt_tokens=13054 gen_tokens=2666 source_chars=15167 source_tokens=7396 note_chars=5535 -->
+

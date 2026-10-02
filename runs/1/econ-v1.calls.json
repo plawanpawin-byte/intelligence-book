@@ -1,0 +1,47 @@
+[
+ {
+  "label": "section 1/3",
+  "prompt_tokens": 3278,
+  "gen_tokens": 673,
+  "seconds": 67.08092904090881,
+  "finish": "stop",
+  "prompt_tps": 117.61207007900829,
+  "gen_tps": 17.18154463090676
+ },
+ {
+  "label": "section 2/3",
+  "prompt_tokens": 3413,
+  "gen_tokens": 525,
+  "seconds": 49.36954689025879,
+  "finish": "stop",
+  "prompt_tps": 178.75774834828886,
+  "gen_tps": 17.358837882314887
+ },
+ {
+  "label": "section 3/3",
+  "prompt_tokens": 2037,
+  "gen_tokens": 565,
+  "seconds": 38.31915211677551,
+  "finish": "stop",
+  "prompt_tps": 289.0979676835101,
+  "gen_tps": 18.08716994690383
+ },
+ {
+  "label": "intro",
+  "prompt_tokens": 2178,
+  "gen_tokens": 238,
+  "seconds": 18.67860984802246,
+  "finish": "stop",
+  "prompt_tps": 307.6598762948481,
+  "gen_tps": 20.583043536541194
+ },
+ {
+  "label": "outro",
+  "prompt_tokens": 2148,
+  "gen_tokens": 665,
+  "seconds": 44.16965985298157,
+  "finish": "stop",
+  "prompt_tps": 286.51795466663833,
+  "gen_tps": 18.150627781266934
+ }
+]

@@ -1,0 +1,29 @@
+[
+ {
+  "label": "section 1/1",
+  "prompt_tokens": 2101,
+  "gen_tokens": 792,
+  "seconds": 46.13119101524353,
+  "finish": "stop",
+  "prompt_tps": 194.22270047256765,
+  "gen_tps": 22.462138295095812
+ },
+ {
+  "label": "intro",
+  "prompt_tokens": 1207,
+  "gen_tokens": 174,
+  "seconds": 11.24816107749939,
+  "finish": "stop",
+  "prompt_tps": 312.699491896774,
+  "gen_tps": 23.670019390647266
+ },
+ {
+  "label": "outro",
+  "prompt_tokens": 1177,
+  "gen_tokens": 528,
+  "seconds": 26.57856011390686,
+  "finish": "stop",
+  "prompt_tps": 313.684144319225,
+  "gen_tps": 23.173911161933756
+ }
+]

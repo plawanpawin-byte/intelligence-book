@@ -1,0 +1,11 @@
+[
+ {
+  "label": "v0 write",
+  "prompt_tokens": 792,
+  "gen_tokens": 130,
+  "seconds": 15.069841861724854,
+  "finish": "stop",
+  "prompt_tps": 84.86840193884119,
+  "gen_tps": 22.819392560496162
+ }
+]
