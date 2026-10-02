@@ -857,6 +857,19 @@ def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print, 
     for topic, bs in groups:
         if units and sum(len(x) for x in units[-1][1]) + sum(len(x) for x in bs) <= group_chars:
             units[-1][1].extend(bs)
+        elif globals().get("_split_groups") and sum(len(x) for x in bs) > group_chars:
+            # A big group would make the writer skip facts: split it (sub-points stay with their parent).
+            parts = max(2, round(sum(len(x) for x in bs) / group_chars))
+            target = sum(len(x) for x in bs) / parts
+            cur, size = [], 0
+            for b in bs:
+                if cur and size >= target and not b.startswith("  "):
+                    units.append([topic, cur])
+                    cur, size = [], 0
+                cur.append(b)
+                size += len(b)
+            if cur:
+                units.append([topic, cur])
         else:
             units.append([topic, list(bs)])
     raw_sections = [write_section(t, bs, f"write {i+1}/{len(units)}") for i, (t, bs) in enumerate(units)]
@@ -1331,3 +1344,13 @@ def run_v8(llm, sources, style="summary", language="auto", cfg=None, log=print):
         EX_TH_SECTION, EX_EN_SECTION = saved
     note = heading_questions(note)
     return normalize_markdown(note, is_thai(note))
+
+
+
+def run_v9(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    """v8 + big fact groups are split so the writer covers every fact."""
+    globals()["_split_groups"] = True
+    try:
+        return run_v8(llm, sources, style, language, cfg, log)
+    finally:
+        globals()["_split_groups"] = False
