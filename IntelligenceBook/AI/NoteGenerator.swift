@@ -107,7 +107,9 @@ final class GenerationJob {
             sourceLower = sourceText.lowercased()
             let allowed = Grounding.numbers(in: sourceText).union(Grounding.smallNumbers(in: sourceText))
             let note: String
-            if corpus.count < NotePrompts.shortCharacters {
+            if DeviceProfile.selected == .b1 {
+                note = try await factsOnlyNote(texts, kit: kit, allowed: allowed)
+            } else if corpus.count < NotePrompts.shortCharacters {
                 note = try await shortNote(corpus, kit: kit, allowed: allowed)
             } else {
                 note = try await fullNote(texts, kit: kit, allowed: allowed)
@@ -182,6 +184,77 @@ final class GenerationJob {
             section = "# \(facts.topic.isEmpty ? "Note" : facts.topic)\n\n" + section
         }
         return section
+    }
+
+    // MARK: 1B: facts only
+
+    /// The 1B model invents things when it writes prose (evaluation: a sleep podcast became a note about journaling),
+    /// but it extracts facts reasonably. So it only extracts; the note is assembled here, plus a short overview.
+    private func factsOnlyNote(_ texts: [String], kit: NotePrompts, allowed: Set<String>) async throws -> String {
+        let llm = LLMService.shared
+        var chunks: [String] = []
+        for text in texts { chunks += TextChunker.split(text, maxCharacters: 1_200) }
+        if chunks.count > 60 {
+            let per = Int((Double(chunks.count) / 60).rounded(.up))
+            chunks = stride(from: 0, to: chunks.count, by: per).map { chunks[$0..<min($0 + per, chunks.count)].joined(separator: "\n") }
+        }
+        let started = Date()
+        var sections: [(topic: String, facts: [String])] = []
+        var seen = Set<String>()
+        var seenGrams: [Set<String>] = []
+        for (index, chunk) in chunks.enumerated() {
+            try Task.checkCancellation()
+            phase = .reading(index + 1, chunks.count)
+            progress = 0.9 * Double(index) / Double(chunks.count)
+            if index > 0 {
+                remaining = Date().timeIntervalSince(started) / Double(index) * Double(chunks.count - index + 1)
+            }
+            let raw = try await ask(
+                system: kit.factsSystem, prompt: kit.factsPrompt(chunk), maxTokens: 500, temperature: 0,
+                example: kit.factsExample
+            ) { [weak self] partial in self?.output = partial }
+            let parsed = FactList.parse(raw)
+            var keep: [String] = []
+            for fact in parsed.facts {
+                let key = FactList.key(fact)
+                guard !key.isEmpty, !seen.contains(key), !Grounding.isUngrounded(fact, allowed: allowed),
+                      Examples.leakedWords(in: fact, source: sourceLower).isEmpty else { continue }
+                let grams = FactList.trigrams(fact)
+                if FactList.isNearDuplicate(grams, of: seenGrams) { continue }
+                seen.insert(key)
+                seenGrams.append(grams)
+                keep.append(fact)
+            }
+            guard !keep.isEmpty else { continue }
+            var topic = parsed.topic
+            if topic.isEmpty || !Examples.leakedWords(in: topic, source: sourceLower).isEmpty {
+                topic = kit.thai ? "ส่วนที่ \(index + 1)" : "Part \(index + 1)"
+            }
+            if let last = sections.last, last.topic == topic {
+                sections[sections.count - 1].facts += keep
+            } else {
+                sections.append((topic, keep))
+            }
+        }
+        remaining = nil
+        guard let first = sections.first else { throw AppError.message("The AI couldn’t find any content to write about") }
+
+        phase = .framing
+        let allFacts = sections.flatMap { $0.facts }.joined(separator: "\n")
+        var overview = try await llm.generate(
+            system: kit.thai ? "Write in Thai (ภาษาไทย)." : "Write in English.",
+            prompt: "<facts>\n\(String(allFacts.prefix(2500)))\n</facts>\n\nWrite 2–3 sentences that summarise these facts. Use only the facts. Output only the sentences.",
+            maxTokens: 200, temperature: 0
+        )
+        overview = overview.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }.joined(separator: " ")
+        if Grounding.isUngrounded(overview, allowed: allowed) || !Examples.leakedWords(in: overview, source: sourceLower).isEmpty {
+            overview = ""
+        }
+        var parts = ["# \(first.topic)"]
+        if !overview.isEmpty { parts.append("> [!summary] \(kit.thai ? "ภาพรวม" : "Overview")\n> \(overview)") }
+        for section in sections { parts.append("## \(section.topic)\n\n" + section.facts.joined(separator: "\n")) }
+        return parts.joined(separator: "\n\n")
     }
 
     // MARK: Full pipeline
