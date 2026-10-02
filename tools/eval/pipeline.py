@@ -1101,10 +1101,17 @@ def numbers_in(text):
     return out
 
 
+THAI_SMALL = {"2": "สอง", "3": "สาม", "4": "สี่", "5": "ห้า", "6": "หก", "7": "เจ็ด", "8": "แปด", "9": "เก้า", "10": "สิบ"}
+
+
 def ungrounded(line, allowed):
+    small = globals().get("_small_allowed")
     for v in numbers_in(line):
         try:
-            if float(v) <= 10:
+            f = float(v)
+            if f <= 10:
+                if small is not None and f >= 2 and v in THAI_SMALL and v not in small:
+                    return True
                 continue
         except ValueError:
             continue
@@ -1377,3 +1384,39 @@ def run_v10(llm, sources, style="summary", language="auto", cfg=None, log=print)
         return run_v9(llm, sources, style, language, cfg, log)
     finally:
         globals()["_allowed_numbers"] = None
+
+
+
+# ----------------------------------------------------------------------------- v11 = v10 + calmer sampling, stricter opening, small-number grounding
+
+FRAME_STRICT = (" Every claim in the hook and the overview must be stated in the outline — do not add causes, numbers or "
+                "advice of your own.")
+
+
+def run_v11(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    temps = {"facts": 0.0, "write": 0.15, "open": 0.3, "hook": 0.3, "close": 0.2}
+    orig_chat = llm.chat
+
+    def chat11(system, user, max_tokens, **kw):
+        label = kw.get("label", "").split(" ")[0]
+        if label in temps and "retry hot" not in kw.get("label", ""):
+            kw["temperature"] = temps[label]
+        if label in ("open", "hook"):
+            system = system + FRAME_STRICT
+        return orig_chat(system, user, max_tokens, **kw)
+
+    small = set()
+    for s_ in sources:
+        t = s_["text"]
+        if s_["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        for d, w in THAI_SMALL.items():
+            if re.search(r"(?<![\d.])" + d + r"(?![\d.])", t) or w in t:
+                small.add(d)
+    globals()["_small_allowed"] = small
+    llm.chat = chat11
+    try:
+        return run_v10(llm, sources, style, language, cfg, log)
+    finally:
+        llm.chat = orig_chat
+        globals()["_small_allowed"] = None
