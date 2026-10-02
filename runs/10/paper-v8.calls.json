@@ -1,0 +1,82 @@
+[
+ {
+  "label": "facts 1/3",
+  "output": "TOPIC: Attention Mechanism in Transformers\n\u2022 The attention mechanism was introduced as an add-on to recurrent encoder-decoder models (Bahdanau et al., 2015) to address weaknesses of sequential models like RNNs.\n\u2022 Computation is inherently sequential in RNNs, which can lead to information about early tokens being lost and long-range dependencies being learned poorly.\n\u2022 The Transformer removed recurrence entirely and built the network out of attention and simple feed-forward layers (Vaswani et al., 2017).\n\u2022 Attention lets the decoder look back at every encoder state and decide which input positions are relevant for each output step.\n\u2022 A useful mental model for understanding attention is a dictionary (key-value store), where the query is compared with every key and produces a similarity score that contributes to the weights.\n\u2022 Each token in the input is represented by a vector x_i of dimension d_model, and three learned linear maps produce:\n    - Query q_i = x_i W^Q\n    - Key k_i = x_i W^K\n    - Value v_i = x_i W^V\n\u2022 The Transformer uses the dot product as its similarity function for attention.\n\u2022 The complete operation is written as Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V (9.1).\n\u2022 Dividing by sqrt(d_k) restores unit variance and keeps the softmax in a well-behaved range to prevent gradients from exploding or shrinking.\n\u2022 Worked example: Suppose a sequence has three tokens and d_k = 4. For the first token, the raw scores against the three keys are (8, 4, 0).",
+  "prompt_tokens": 1287,
+  "gen_tokens": 342,
+  "seconds": 24.666682243347168,
+  "finish": "stop",
+  "prompt_tps": 119.6892946818905,
+  "gen_tps": 24.641297699341788
+ },
+ {
+  "label": "facts 2/3",
+  "output": "TOPIC: Multi-Head Attention and Positional Information in Transformers\n\u2022 After scaling by 1/sqrt(4) = 0.5, attention weights become approximately (0.87, 0.12, 0.02), with the output of token 1 being mostly its own value.\n\u2022 Without scaling, weights would be about (0.98, 0.02, 0.00), making it a \"harder\" choice.\n\u2022 **Self-attention**: every token builds a new representation by gathering information from other tokens in the same sequence.\n\u2022 **Cross-attention**: decoder uses queries from itself, while keys and values come from encoder output.\n\u2022 A language model that predicts the next token must not look at future tokens; this is enforced with a causal mask.\n\u2022 Before softmax, scores (i, j) with j > i are set to minus infinity, making corresponding weights zero.\n\u2022 The same mechanism is used to ignore padding tokens in a batch.\n\u2022 **Multi-head attention**: runs h attention operations in parallel, each with its own projection matrices W_i^Q, W_i^K, W_i^V.\n\u2022 Each head works with d_k = d_v = 512 / 8 = 64 dimensions; empirically, different heads learn to specialize in tracking previous tokens or syntactic relations.\n\u2022 **Positional information**: attention is permutation-invariant, meaning the model has no idea of word order unless supplied with positional encoding vectors.\n\u2022 The original Transformer adds a positional encoding vector to each input embedding using sine and cosine functions of different frequencies.\n\u2022 Low dimensions oscillate quickly, while high dimensions slowly, resulting in every position receiving a distinct pattern.\n\u2022 Many later models instead learn position embeddings directly or use relative schemes like rotary position embeddings (RoPE).\n\u2022 A Transformer layer combines two sub-layers: multi-head self-attention and a position-wise feed-forward network (FFN) applied independently to every token.",
+  "prompt_tokens": 1335,
+  "gen_tokens": 398,
+  "seconds": 21.70446491241455,
+  "finish": "stop",
+  "prompt_tps": 285.70746022573604,
+  "gen_tps": 23.413257186716205
+ },
+ {
+  "label": "facts 3/3",
+  "output": "TOPIC: How Self-Attention Works in Transformers\n\u2022 Attention computes a weighted average of value vectors, using a softmax over query-key similarities.\n\u2022 Scaling by sqrt(d_k) prevents the softmax from saturating.\n\u2022 Multiple heads let the model attend to several relationships at once.\n\u2022 Positional encodings restore word-order information.\n\u2022 Each block consists of attention + FFN (Fully Featured Network), with residual connections and LayerNorm.\n\u2022 The cost of full self-attention is quadratic in sequence length.\n\nExercises:\n\u2022 9.1: Repeat the worked example of Section 9.3, using scores (6, 6, 0) and d_k = 9. Identify which tokens receive the largest weights.\n\u2022 9.2: Explain why a model without positional encodings cannot distinguish \"dog bites man\" from \"man bites dog\".",
+  "prompt_tokens": 1124,
+  "gen_tokens": 175,
+  "seconds": 11.379603862762451,
+  "finish": "stop",
+  "prompt_tps": 286.48292201565664,
+  "gen_tps": 23.58432426546401
+ },
+ {
+  "label": "write 1/3",
+  "output": "## The Power of Attention in Transformers\n\nThe attention mechanism was introduced as an add-on to recurrent encoder-decoder models to address weaknesses of sequential models like RNNs.\n\n### Why Recurrence Can Be a Problem\nComputation is inherently sequential in RNNs, which can lead to information about early tokens being lost and long-range dependencies being learned poorly. This is because RNNs process one token at a time, making it difficult for the model to learn relationships between distant tokens.\n\n> [!tip] Think of it like a dictionary (key-value store)\nAttention lets the decoder look back at every encoder state and decide which input positions are relevant for each output step. It's like searching through a dictionary to find the most similar words to your query.\n\n### How Attention Works\nEach token in the input is represented by a vector x_i of dimension d_model, and three learned linear maps produce:\n\n- **Query** q_i = x_i W^Q: This represents the \"interest\" or \"relevance\" of each token.\n- **Key** k_i = x_i W^K: This represents the \"meaning\" or \"content\" of each token.\n- **Value** v_i = x_i W^V: This represents the actual value of each token.\n\nThe attention mechanism uses the dot product as its similarity function for attention. The complete operation is written as Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V (9.1).\n\n### Why Normalization Matters\nDividing by sqrt(d_k) restores unit variance and keeps the softmax in a well-behaved range to prevent gradients from exploding or shrinking.\n\n### Example Time!\nSuppose a sequence has three tokens and d_k = 4. For the first token, the raw scores against the three keys are (8, 4, 0). The attention mechanism will calculate the weights for each token based on these similarities.\n\n| Token | Raw Score |\n| --- | --- |\n| 1    | 8        |\n| 2    | 4        |\n| 3    | 0        |\n\nThe final weights will be calculated by normalizing these raw scores, which will result in a set of weights that represent the relative importance of each token.",
+  "prompt_tokens": 1050,
+  "gen_tokens": 462,
+  "seconds": 25.143609046936035,
+  "finish": "stop",
+  "prompt_tps": 262.7429140347393,
+  "gen_tps": 21.887658120810876
+ },
+ {
+  "label": "write 2/3",
+  "output": "## Multi-Head Attention and Positional Information in Transformers\n\n### Scaling Down the Weights\nWhen attention weights are scaled by 1/sqrt(4) = 0.5, they become approximately **(0.87, 0.12, 0.02)**, with the output of token 1 being mostly its own value.\n\nWithout scaling, weights would be about **(0.98, 0.02, 0.00)**, making it a \"harder\" choice.\n\n> [!tip] Think of it this way: scaling down the weights helps to reduce the impact of future tokens on current ones.\n\n### Self-Attention and Cross-Attention\n**Self-attention**: every token builds a new representation by gathering information from other tokens in the same sequence.\n**Cross-attention**: decoder uses queries from itself, while keys and values come from encoder output.\n\n> [!example] Language models must not look at future tokens; this is enforced with a causal mask.\n\nBefore softmax, scores (i, j) with j > i are set to minus infinity, making corresponding weights zero. The same mechanism is used to ignore padding tokens in a batch.\n\n### Multi-Head Attention\nThe **multi-head attention** runs h attention operations in parallel, each with its own projection matrices W_i^Q, W_i^K, W_i^V.\n\nEach head works with d_k = d_v = 512 / 8 = 64 dimensions; empirically, different heads learn to specialize in tracking previous tokens or syntactic relations.\n\n> [!tip] Think of it this way: multi-head attention allows the model to focus on different aspects simultaneously.\n\n### Positional Information\nAttention is permutation-invariant, meaning the model has no idea of word order unless supplied with **positional encoding vectors**.\n\nThe original Transformer adds a positional encoding vector to each input embedding using sine and cosine functions of different frequencies.\n\nLow dimensions oscillate quickly, while high dimensions slowly, resulting in every position receiving a distinct pattern.\n\nMany later models instead learn position embeddings directly or use relative schemes like **rotary position embeddings (RoPE)**.\n\n> [!tip] Think of it this way: positional information is crucial for understanding the sequence structure.\n\n### Transformer Layer\nA Transformer layer combines two sub-layers: **multi-head self-attention** and a **position-wise feed-forward network (FFN) applied independently to every token**.\n\n- [ ] Review the math behind attention weights scaling",
+  "prompt_tokens": 1106,
+  "gen_tokens": 506,
+  "seconds": 29.504944324493408,
+  "finish": "stop",
+  "prompt_tps": 238.34210221547306,
+  "gen_tps": 20.382466202983373
+ },
+ {
+  "label": "write 3/3",
+  "output": "## Self-Attention Magic: how Transformers learn to read\n\n**Attention**: computing a weighted average of value vectors is crucial for understanding what's happening in self-attention.\n\n### How Attention Works\nAttention uses ==a softmax over query-key similarities== to compute a weighted average, which helps the model focus on relevant parts of the input sequence.\n\n> [!definition] **Softmax**: a function that outputs probabilities between 0 and 1, used to normalize the output\n\n> [!example] Example with scores (6, 6, 0)\nA simple example with scores: 6, 6, 0. The highest score is 6, so the token it corresponds to will receive the largest weight in the attention calculation.\n\n### Multiple Heads for Multi-Relationships\nUsing multiple heads lets the model ==attend to several relationships at once==, improving its ability to capture complex patterns in the input sequence.\n\n### Residual Connections and LayerNorm\nEach block consists of attention + FFN (Fully Featured Network), with residual connections and LayerNorm. These components help stabilize the training process and improve the model's performance.\n\n> [!tip] **Residual Connections**: adding the identity function to each layer helps preserve the information flow during training\n\n> [!tip] **LayerNorm**: normalizing the activations before passing them through a linear transformation helps stabilize the training process\n\n### Cost of Full Self-Attention\nThe cost of full self-attention is ==quadratic in sequence length==, which can be computationally expensive for long sequences.\n\n> [!warning] **Computational Complexity**: full self-attention has a high computational complexity, making it challenging to train models with very long input sequences.\n\n### Exercises\n- 9.1: Repeat worked example using scores (6, 6, 0) and d_k = 9.\n- 9.2: Explain why a model without positional encodings cannot distinguish \"dog bites man\" from \"man bites dog\".\n\n| Token | Score |\n| --- | --- |\n| Dog   | 6    |\n| Bites | 6    |\n| Man   | 0    |\n\n> [!definition] **Token Attention Weights**: the output of the attention mechanism is a vector where each element represents the weight of the corresponding token in the input sequence.\n\n> [!example] Example with scores (6, 6, 0)\nThe highest score is 6, so the tokens it corresponds to will receive the largest weights in the attention calculation.",
+  "prompt_tokens": 860,
+  "gen_tokens": 512,
+  "seconds": 29.448214769363403,
+  "finish": "stop",
+  "prompt_tps": 192.2470293852106,
+  "gen_tps": 20.52755762968978
+ },
+ {
+  "label": "open",
+  "output": "# The Power of Attention in Transformers\nThe Transformer model introduced self-attention as its core mechanism for processing sequential data, revolutionizing the field of NLP with its ability to capture long-range dependencies and complex patterns in input sequences.\n\n> [!summary] Overview\n> Self-attention is a mechanism that allows the model to focus on relevant parts of the input sequence by computing a weighted average of value vectors based on query-key similarities. This is achieved through attention mechanisms, which use dot products as their similarity function. Multi-head attention further enhances this process by running multiple attention operations in parallel, each with its own projection matrices. The Transformer also incorporates positional information through learned position embeddings or sine and cosine functions, allowing it to distinguish between different positions in the input sequence. However, without these positional encodings, models struggle to capture complex patterns, such as the difference between \"dog bites man\" and \"man bites dog\".",
+  "prompt_tokens": 1543,
+  "gen_tokens": 185,
+  "seconds": 15.155693054199219,
+  "finish": "stop",
+  "prompt_tps": 255.1529306341842,
+  "gen_tps": 20.389524226157576
+ },
+ {
+  "label": "close",
+  "output": "## Key takeaways\n- The attention mechanism allows the decoder to look back at every encoder state and decide which input positions are relevant for each output step, effectively enabling long-range dependencies to be learned by sequential models like RNNs.\n- The Transformer removed recurrence entirely and built the network out of attention and simple feed-forward layers, resulting in a more efficient and scalable model.\n- Attention lets the decoder weigh the importance of different tokens in the input sequence, using a softmax over query-key similarities, and computes a weighted average of value vectors.\n- Multi-head attention allows the model to attend to several relationships at once, while positional information is permutation-invariant, meaning the model has no idea of word order unless supplied with positional encoding vectors.\n- The Transformer layer combines two sub-layers: multi-head self-attention and a position-wise feed-forward network (FFN) applied independently to every token.\n\n## Review questions\n> [!question] What is the main advantage of using attention in sequential models like RNNs?\n**Answer:** Attention allows the decoder to look back at every encoder state and decide which input positions are relevant for each output step, enabling long-range dependencies to be learned by sequential models like RNNs.\n\n> [!question] Why does the Transformer use the dot product as its similarity function for attention?\n**Answer:** The Transformer uses the dot product as its similarity function for attention because it is a well-behaved range that keeps the softmax in a well-behaved range to prevent gradients from exploding or shrinking.\n\n> [!question] How does multi-head attention allow the model to attend to several relationships at once?\n**Answer:** Multi-head attention allows the model to attend to several relationships at once by running h attention operations in parallel, each with its own projection matrices W_i^Q, W_i^K, W_i^V, and empirically, different heads learn to specialize in tracking previous tokens or syntactic relations.\n\n> [!question] Why is positional information permutation-invariant in the Transformer?\n**Answer:** Positional information is permutation-invariant in the Transformer because it uses sine and cosine functions of different frequencies to create a unique pattern for every position, regardless of word order.",
+  "prompt_tokens": 1005,
+  "gen_tokens": 445,
+  "seconds": 25.844518899917603,
+  "finish": "stop",
+  "prompt_tps": 265.9969865833974,
+  "gen_tps": 20.204579273534698
+ }
+]
