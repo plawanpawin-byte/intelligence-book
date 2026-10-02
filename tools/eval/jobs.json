@@ -1,13 +1,40 @@
 {
-  "defaults": {"chunk_chars": 6000, "max_units": 6, "temperature": 0.4, "rep_penalty": 1.1},
-  "jobs": [
-    {"id": "econ-v0", "case": "th_lecture_econ", "pipeline": "v0"},
-    {"id": "econ-v1", "case": "th_lecture_econ", "pipeline": "v1"},
-    {"id": "short-v0", "case": "th_short_recording", "pipeline": "v0"},
-    {"id": "short-v1", "case": "th_short_recording", "pipeline": "v1"},
-    {"id": "talk-v1", "case": "th_talk_medium", "pipeline": "v1"},
-    {"id": "article-v1", "case": "th_article", "pipeline": "v1"},
-    {"id": "paper-v1", "case": "en_paper", "pipeline": "v1"},
-    {"id": "bio-v1", "case": "th_lecture_bio_long", "pipeline": "v1"}
-  ]
+ "defaults": {
+  "chunk_chars": 6000,
+  "max_units": 6,
+  "temperature": 0.4,
+  "rep_penalty": 1.1
+ },
+ "jobs": [
+  {
+   "id": "econ-v2",
+   "case": "th_lecture_econ",
+   "pipeline": "v2"
+  },
+  {
+   "id": "short-v2",
+   "case": "th_short_recording",
+   "pipeline": "v2"
+  },
+  {
+   "id": "talk-v2",
+   "case": "th_talk_medium",
+   "pipeline": "v2"
+  },
+  {
+   "id": "article-v2",
+   "case": "th_article",
+   "pipeline": "v2"
+  },
+  {
+   "id": "paper-v2",
+   "case": "en_paper",
+   "pipeline": "v2"
+  },
+  {
+   "id": "bio-v2",
+   "case": "th_lecture_bio_long",
+   "pipeline": "v2"
+  }
+ ]
 }

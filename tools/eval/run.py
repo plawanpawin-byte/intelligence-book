@@ -5,6 +5,7 @@ import sys
 import time
 
 import pipeline
+import metrics
 from backend import make_backend
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +45,7 @@ def main():
         src_tokens = sum(llm.count_tokens(s["text"]) for s in sources)
         header = (f"<!-- job={job['id']} backend={llm.name} seconds={secs:.0f} calls={len(calls)} "
                   f"prompt_tokens={p} gen_tokens={g} source_chars={chars} source_tokens={src_tokens} "
-                  f"note_chars={len(note)} -->\n")
+                  f"note_chars={len(note)} metrics={metrics.report(note, chr(10).join(x['text'] for x in sources))} -->\n")
         open(os.path.join(out_dir, job["id"] + ".md"), "w", encoding="utf-8").write(header + note + "\n")
         json.dump(calls, open(os.path.join(out_dir, job["id"] + ".calls.json"), "w"), indent=1)
         print(header)

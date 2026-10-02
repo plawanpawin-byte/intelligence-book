@@ -409,3 +409,267 @@ def run_v1(llm, sources, style="summary", language="auto", cfg=None, log=print):
     if not intro.startswith("# "):
         intro = "# " + (first_heading(sections[0]) if sections else "Note") + "\n\n" + intro
     return dedupe("\n\n".join([intro] + sections + [outro]))
+
+
+# ----------------------------------------------------------------------------- v2 (understand → explain → frame)
+#
+# Lessons from run 1 (v1):
+# - When the section writer sees the raw transcript, a 3B model copies spoken sentences ("อ่ะ", "นะครับ").
+# - A "continue" pass restarts the section from scratch → whole sections repeated.
+# - Temperature 0.4 + abstract rewriting → invented/inverted facts.
+# v2: deterministic clean-up of speech, small chunks, one "explain" pass per chunk with a worked example,
+#     the frame (title/hook/overview, takeaways/questions) written from the explained sections only.
+
+FILLER_TOKENS = {
+    "เอ่อ", "อ่ะ", "อะ", "อ้า", "อ๋อ", "เออ", "อืม", "อืมม", "แบบว่า", "ก็คือว่า", "คือว่า", "นะ", "นะครับ", "ครับ",
+    "ค่ะ", "คะ", "นะคะ", "จ้ะ", "จ้า", "โอเค", "โอเคนะครับ", "ใช่มั้ย", "ใช่ไหม", "เนอะ", "อ่า", "uh", "um", "uhm",
+    "erm", "like,", "okay", "okay,", "OK", "ok", "so,",
+}
+PARTICLE_SUFFIX = re.compile(r"(?:นะครับ|นะคะ|ครับ|ค่ะ)$")
+
+
+def preclean_speech(text):
+    """Removes timestamps, filler words and polite particles from a speech transcript."""
+    text = TIMESTAMP.sub("", text)
+    out_lines = []
+    for line in text.split("\n"):
+        tokens = []
+        for tok in line.split():
+            if tok in FILLER_TOKENS:
+                continue
+            tok2 = PARTICLE_SUFFIX.sub("", tok)
+            if tok2:
+                tokens.append(tok2)
+        if tokens:
+            out_lines.append(" ".join(tokens))
+    return "\n".join(out_lines)
+
+
+V2_EXAMPLE_TH = """EXAMPLE
+<material>
+วันนี้เราจะคุยเรื่องดอกเบี้ยทบต้น compound interest ก็คือดอกเบี้ยที่คิดจากเงินต้นบวกดอกเบี้ยเดิมที่สะสมไว้ ต่างจากดอกเบี้ยธรรมดาที่คิดจากเงินต้นอย่างเดียว สมมุติฝากหนึ่งหมื่นบาท ดอกเบี้ยปีละสิบเปอร์เซ็นต์ ปีแรกได้หนึ่งพัน ปีที่สองได้หนึ่งพันหนึ่งร้อย เพราะคิดจากหนึ่งหมื่นหนึ่งพัน ยิ่งนานยิ่งโตเร็ว เลยต้องเริ่มออมเร็ว ข้อสอบชอบออกให้คำนวณสองปีนะ
+</material>
+OUTPUT
+## ดอกเบี้ยทบต้น: ทำไมเงินออมยิ่งนานยิ่งโตเร็ว
+
+**ดอกเบี้ยทบต้น (Compound interest)** คือดอกเบี้ยที่คำนวณจากเงินต้นรวมกับดอกเบี้ยที่สะสมไว้แล้ว ต่างจาก **ดอกเบี้ยธรรมดา** ที่คิดจากเงินต้นเพียงอย่างเดียว ผลคือดอกเบี้ยจะ ==เพิ่มขึ้นทุกปีแม้อัตราดอกเบี้ยเท่าเดิม== เงินจึงเติบโตเร็วขึ้นเรื่อยๆ ตามเวลา
+
+> [!example] ตัวอย่าง
+> ฝาก 10,000 บาท ดอกเบี้ย 10% ต่อปี
+> - ปีที่ 1: ได้ดอกเบี้ย 1,000 บาท → รวม 11,000 บาท
+> - ปีที่ 2: ได้ดอกเบี้ย 1,100 บาท (คิดจาก 11,000) → รวม 12,100 บาท
+
+> [!tip] ข้อคิดและข้อสอบ
+> เพราะเงินยิ่งโตเร็วขึ้นตามเวลา การเริ่มออมเร็วจึงได้เปรียบ — ข้อสอบมักให้คำนวณดอกเบี้ยทบต้น 2 ปี
+"""
+
+V2_EXAMPLE_EN = """EXAMPLE
+<material>
+so today compound interest, it's interest calculated on the principal plus the interest you already earned, unlike simple interest which is only on the principal. say you put in ten thousand at ten percent a year, first year you get a thousand, second year eleven hundred because it's on eleven thousand. the longer the faster it grows so start saving early. the exam usually asks you to compute two years
+</material>
+OUTPUT
+## Compound interest: why savings grow faster over time
+
+**Compound interest** is interest calculated on the principal *plus* the interest already earned, unlike **simple interest**, which is calculated on the principal only. As a result the interest ==grows every year even at the same rate==, so money grows faster and faster over time.
+
+> [!example] Example
+> Deposit 10,000 at 10% per year
+> - Year 1: 1,000 interest → 11,000 in total
+> - Year 2: 1,100 interest (on 11,000) → 12,100 in total
+
+> [!tip] Takeaway and exam hint
+> Because growth speeds up over time, starting to save early pays off — exams often ask for a 2-year compound interest calculation.
+"""
+
+
+def v2_system(lang, kinds):
+    spoken = bool(kinds & {"audio", "recording"})
+    src = kind_phrase(kinds)
+    speech_rules = ""
+    if spoken:
+        speech_rules = """
+- The material is SPEECH turned into text by speech recognition. Speakers ramble, repeat themselves and use filler. \
+Turn it into clean WRITTEN language like a textbook. Never copy the speaker's sentences.
+- Speech recognition mishears words. When a word is clearly wrong, write the term the speaker meant.
+- Numbers are often spelled out in words ("สามสิบห้า", "ten thousand"). Write them as digits (35, 10,000).
+- Skip greetings, attendance, jokes and classroom management. Keep assignments, deadlines and exam hints."""
+    return f"""You are an expert teacher who writes outstanding study notes.
+{lang_line(lang)}
+The material is {src}.
+
+RULES
+- Understand first, then EXPLAIN in your own words: what each idea is, why it matters, how it works.
+- Keep every example, number, formula and name from the material, and keep cause and effect in the right direction.
+- Never invent facts. If the material doesn't say it, don't write it.{speech_rules}
+- Say each thing once."""
+
+
+def v2_explain_prompt(chunk, lang, covered, style):
+    example = V2_EXAMPLE_TH if lang == "thai" else V2_EXAMPLE_EN
+    cov = ""
+    if covered:
+        cov = "\nTopics already written in earlier sections (don't explain them again, only add what is new):\n" + \
+              "\n".join(f"- {c}" for c in covered[-6:]) + "\n"
+    depth = {
+        "summary": "Explain every idea in this material clearly (about 200–400 words).",
+        "studyGuide": "Explain every idea in depth (about 350–600 words); add a > [!definition] callout for each key term.",
+        "outline": "Use a nested bullet outline (\"- \" and indented \"  - \") of full informative phrases instead of paragraphs.",
+        "questions": "After the explanation add 2–3 > [!question] callouts, each with a line \"> **Answer:** …\".",
+    }[style]
+    return f"""Write one section of a study note that explains the material below, like the example.
+
+{example}
+NOW THE REAL MATERIAL
+<material>
+{chunk}
+</material>
+{cov}
+INSTRUCTIONS
+- Start with "## " and a specific heading that names the idea (a short phrase, can say why it matters).
+- {depth}
+- Short paragraphs; **bold** key terms; ==highlight== the single most important phrase of a paragraph.
+- Put worked examples with their numbers in a > [!example] callout; definitions in > [!definition] Term; \
+exam hints or insights in > [!tip]; caveats or common mistakes in > [!warning]. "### " sub-headings if the part has several ideas.
+- Use a Markdown table when the material compares several things.
+OUTPUT (only the section):"""
+
+
+def v2_frame_open_prompt(outline_text, lang):
+    return f"""Here is the outline of a study note (section headings with their key points):
+<outline>
+{outline_text}
+</outline>
+
+Write the OPENING of this note. Output exactly:
+# <a specific, informative title for the whole note>
+
+<a hook paragraph of 2–3 sentences that makes people want to read on: start with the most surprising fact, a striking number, \
+or a question the note answers — taken from the outline — then say what the reader will understand by the end>
+
+> [!summary] Overview
+> <3–5 sentences that connect all the main ideas into one story, in order>
+
+Only output the opening."""
+
+
+def v2_frame_close_prompt(outline_text, style):
+    nq = {"summary": 4, "studyGuide": 6, "outline": 3, "questions": 0}[style]
+    q = ""
+    if nq:
+        q = f"""
+
+## Review questions
+
+> [!question] <question 1 — tests understanding, not just recall>
+> **Answer:** <complete answer>
+
+(… {nq} questions in total, same format)"""
+    return f"""Here is the outline of a study note (section headings with their key points):
+<outline>
+{outline_text}
+</outline>
+
+Write the ENDING of this note. Output exactly:
+## Key takeaways
+
+- <one full sentence with a key insight, its key phrase in ==highlight==>
+(… 4–6 bullets){q}
+
+Only output the ending. Write the headings in the language of the note."""
+
+
+def outline_of(sections, per_section=420):
+    """Headings + the first lines of every section, for the framing calls."""
+    parts = []
+    for s in sections:
+        lines = [l for l in s.split("\n") if l.strip()]
+        head = next((l for l in lines if l.startswith("## ")), "## (section)")
+        body = " ".join(l.strip("> ").strip() for l in lines if not l.startswith("#") and not l.strip().startswith("> [!"))
+        parts.append(head + "\n" + body[:per_section])
+    return "\n\n".join(parts)
+
+
+V2_SHORT = """Turn this short material into a short, clear note, written properly (not copied).
+
+<material>
+{text}
+</material>
+
+Output:
+# <specific title>
+
+<1–2 sentences: what this is about, written to catch interest>
+
+- <each point that is actually in the material, as a full clear sentence, numbers as digits>
+(if the material has to-dos or next steps, add "## Next steps" with "- [ ] " items)
+
+Do NOT add anything that is not in the material. Only output the note."""
+
+
+HEADING_SYNONYMS = {"key takeaways", "review questions", "สรุป", "summary", "overview"}
+
+
+def merge_sections(sections):
+    """Drops sections that are empty, and merges a section into the previous one when they share a heading."""
+    out = []
+    for s in sections:
+        s = s.strip()
+        if len(re.sub(r"\s", "", s)) < 40:
+            continue
+        h = first_heading(s).strip().lower()
+        if out and first_heading(out[-1]).strip().lower() == h:
+            body = "\n".join(l for l in s.split("\n") if not l.startswith("## "))
+            out[-1] += "\n\n" + body.strip()
+        else:
+            out.append(s)
+    return out
+
+
+def run_v2(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    cfg = cfg or {}
+    chunk_chars = cfg.get("v2_chunk_chars", 3500)
+    temp = cfg.get("v2_temperature", 0.3)
+    rp = cfg.get("rep_penalty", 1.1)
+    max_chunks = cfg.get("v2_max_chunks", 30)
+    kinds = {s["kind"] for s in sources}
+    texts = []
+    for s in sources:
+        t = clean_source(s["kind"], s["text"])
+        if s["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        texts.append(t)
+    corpus = "\n\n".join(texts)
+    lang = language if language != "auto" else ("thai" if is_thai(corpus) else "english")
+    system = v2_system(lang, kinds)
+
+    def chat(prompt, mt, label, t=temp):
+        out, _ = llm.chat(system, prompt, mt, temperature=t, rep_penalty=rp, guard=is_looping, label=label)
+        return dedupe(strip_fences(out))
+
+    if len(corpus) < cfg.get("v2_short_chars", 1200):
+        return chat(V2_SHORT.format(text=corpus), 600, "short")
+
+    chunks = []
+    for t in texts:
+        chunks += split(t, chunk_chars)
+    if len(chunks) > max_chunks:  # very long: merge neighbours instead of dropping material
+        per = -(-len(chunks) // max_chunks)
+        chunks = ["\n".join(chunks[i:i + per]) for i in range(0, len(chunks), per)]
+
+    mt = {"summary": 800, "studyGuide": 1100, "outline": 700, "questions": 900}[style]
+    sections, covered = [], []
+    for i, c in enumerate(chunks):
+        s = chat(v2_explain_prompt(c, lang, covered, style), mt, f"explain {i+1}/{len(chunks)}")
+        s = re.sub(r"^# ", "## ", s, flags=re.M)
+        if not s.lstrip().startswith("## "):
+            s = "## " + (s.split("\n")[0][:60] if s else f"Part {i+1}") + "\n\n" + "\n".join(s.split("\n")[1:])
+        sections.append(s)
+        covered.append(first_heading(s))
+    sections = merge_sections(sections)
+
+    outline = outline_of(sections, per_section=max(200, 6000 // max(1, len(sections))))
+    opening = chat(v2_frame_open_prompt(outline, lang), 450, "open")
+    if not opening.lstrip().startswith("# "):
+        opening = "# " + first_heading(sections[0]) + "\n\n" + opening
+    closing = chat(v2_frame_close_prompt(outline, style), 900, "close") if style != "outline" or True else ""
+    return dedupe("\n\n".join([opening] + sections + [closing]))
