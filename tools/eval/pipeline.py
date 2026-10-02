@@ -1473,7 +1473,8 @@ def strip_english_sentences(text):
     def repl(m):
         inner = m.group(0)
         return "" if len(re.findall(r"[A-Za-z]+", inner)) >= 5 else inner
-    return EN_PAREN.sub(repl, text)
+    text = EN_PAREN.sub(repl, text)
+    return re.sub(r"\*\*\s*\*\*|__\s*__", "", text)
 
 
 TERMS_RULE = " Put English only for single technical terms in parentheses; never translate whole sentences."
