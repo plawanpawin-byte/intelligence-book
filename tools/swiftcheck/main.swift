@@ -84,5 +84,10 @@ let hookA = SectionTools.hasHook("# T\n\n> [!summary] x\n> y")
 let hookB = SectionTools.hasHook("# T\n\nรู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5")
 check("hook", "\(hookA) \(hookB)", "false true")
 
+let shortAllowed = Grounding.numbers(in: SourceCleaner.speech("ถ้าขายแก้วละสามสิบห้า ต้นทุนประมาณสิบแปดบาท ขายได้วันละห้าสิบแก้วก็กำไรวันละแปดร้อยห้าสิบ เครื่องชงมือสองประมาณหมื่นสอง"))
+let madeUp = Grounding.isUngrounded("- กำไรต่อวัน 1,750 บาท - 18 บาท = 1,732 บาท", allowed: shortAllowed)
+let real = Grounding.isUngrounded("- เครื่องชงมือสองประมาณ 12,000 บาท", allowed: shortAllowed)
+check("fact grounding", "\(madeUp) \(real)", "true false")
+
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
 exit(failed == 0 ? 0 : 1)

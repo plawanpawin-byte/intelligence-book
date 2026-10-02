@@ -317,7 +317,7 @@ enum Grounding {
     }
 
     /// Numbers up to 10 are counts and list positions ("2 types") — only larger ones are checked.
-    private static func isUngrounded(_ text: String, allowed: Set<String>) -> Bool {
+    static func isUngrounded(_ text: String, allowed: Set<String>) -> Bool {
         numbers(in: text).contains { value in
             guard let v = Double(value), v > 10 else { return false }
             return !allowed.contains(value)

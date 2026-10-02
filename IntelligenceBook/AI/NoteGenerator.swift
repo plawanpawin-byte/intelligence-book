@@ -96,14 +96,15 @@ final class GenerationJob {
             }
             let kit = NotePrompts(thai: thai, spoken: spoken, style: style)
 
+            // Numbers the sources actually mention. Facts or note lines with any other number are made up
+            // (a 3B model "calculates" profits and paybacks wrongly) and are dropped.
+            let allowed = Grounding.numbers(in: texts.joined(separator: "\n"))
             let note: String
             if corpus.count < NotePrompts.shortCharacters {
-                note = try await shortNote(corpus, kit: kit)
+                note = try await shortNote(corpus, kit: kit, allowed: allowed)
             } else {
-                note = try await fullNote(texts, kit: kit)
+                note = try await fullNote(texts, kit: kit, allowed: allowed)
             }
-            // Lines or callouts that state a number the sources never mention are made up: drop them.
-            let allowed = Grounding.numbers(in: texts.joined(separator: "\n"))
             let grounded = Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed)
             output = MarkdownFixer.fix(MarkdownFixer.headingQuestions(MarkdownFixer.questionCallouts(grounded)), thai: thai)
             progress = 1
@@ -141,14 +142,15 @@ final class GenerationJob {
 
     // MARK: Short material: facts → one compact section, no padding.
 
-    private func shortNote(_ corpus: String, kit: NotePrompts) async throws -> String {
+    private func shortNote(_ corpus: String, kit: NotePrompts, allowed: Set<String>) async throws -> String {
         phase = .reading(1, 1)
         progress = 0.1
         let factsText = try await ask(
             system: kit.factsSystem, prompt: kit.factsPrompt(corpus), maxTokens: 500, temperature: 0.2,
             example: kit.factsExample
         ) { [weak self] partial in self?.output = partial }
-        let facts = FactList.parse(factsText)
+        var facts = FactList.parse(factsText)
+        facts.facts.removeAll { Grounding.isUngrounded($0, allowed: allowed) }
         phase = .writing(1, 1)
         progress = 0.5
         var section = try await ask(
@@ -169,7 +171,7 @@ final class GenerationJob {
 
     // MARK: Full pipeline
 
-    private func fullNote(_ texts: [String], kit: NotePrompts) async throws -> String {
+    private func fullNote(_ texts: [String], kit: NotePrompts, allowed: Set<String>) async throws -> String {
         let llm = LLMService.shared
         var chunks: [String] = []
         for text in texts { chunks += TextChunker.split(text, maxCharacters: NotePrompts.chunkCharacters) }
@@ -206,7 +208,7 @@ final class GenerationJob {
             var fresh: [String] = []
             for fact in parsed.facts {
                 let key = FactList.key(fact)
-                guard !key.isEmpty, !seen.contains(key) else { continue }
+                guard !key.isEmpty, !seen.contains(key), !Grounding.isUngrounded(fact, allowed: allowed) else { continue }
                 let grams = FactList.trigrams(fact)
                 if FactList.isNearDuplicate(grams, of: seenGrams) { continue }
                 seen.insert(key)
@@ -224,6 +226,22 @@ final class GenerationJob {
             let size = group.facts.reduce(0) { $0 + $1.count }
             if let last = units.last, last.facts.reduce(0, { $0 + $1.count }) + size <= NotePrompts.groupCharacters {
                 units[units.count - 1].facts += group.facts
+            } else if size > NotePrompts.groupCharacters {
+                // Given too many facts at once the writer skips some: split (sub-points stay with their parent).
+                let parts = max(2, Int((Double(size) / Double(NotePrompts.groupCharacters)).rounded()))
+                let target = Double(size) / Double(parts)
+                var current: [String] = []
+                var currentSize = 0
+                for fact in group.facts {
+                    if !current.isEmpty, Double(currentSize) >= target, !fact.hasPrefix("  ") {
+                        units.append((group.topic, current))
+                        current = []
+                        currentSize = 0
+                    }
+                    current.append(fact)
+                    currentSize += fact.count
+                }
+                if !current.isEmpty { units.append((group.topic, current)) }
             } else {
                 units.append(group)
             }
@@ -298,9 +316,9 @@ struct NotePrompts {
     let style: NoteStyle
 
     static let shortCharacters = 1_500
-    static let chunkCharacters = 3_500
+    static let chunkCharacters = 2_000
     static let groupCharacters = 1_500
-    static let maxChunks = 36
+    static let maxChunks = 40
 
     private var languageRule: String {
         thai ? "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses." : "Write in English."
