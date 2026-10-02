@@ -188,6 +188,25 @@ enum AppError: LocalizedError {
         case .message(let m): m
         }
     }
+
+    /// Readable text for any error, with the step it happened in and the system error code,
+    /// so a screenshot is enough to know what went wrong.
+    static func describe(_ error: Error, during step: String) -> String {
+        if let app = error as? AppError { return app.errorDescription ?? step }
+        let ns = error as NSError
+        var text = "\(step) failed: \(ns.localizedDescription) [\(ns.domain) \(ns.code)]"
+        let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError
+        if let underlying {
+            text += " ← [\(underlying.domain) \(underlying.code)] \(underlying.localizedDescription)"
+        }
+        // -5009 and friends come from iCloud Drive / a cloud drive that couldn't deliver the file.
+        if ns.domain == "NSFileProviderErrorDomain" || underlying?.domain == "NSFileProviderErrorDomain" {
+            text += "\n\niCloud Drive couldn’t hand over this file. In the Files app, touch and hold it → Download Now "
+                + "(or move it to On My iPhone), then add it again. You can also share a recording straight from "
+                + "Voice Memos → Share → IntelligenceBook."
+        }
+        return text
+    }
 }
 
 enum FileStore {
@@ -208,16 +227,66 @@ enum FileStore {
         let name = "\(UUID().uuidString.prefix(8))-\(source.lastPathComponent)"
         let dest = FileStore.url(for: name)
         if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
-        // Coordinated read makes file providers (iCloud Drive, Google Drive…) deliver the real file first.
-        var coordinationError: NSError?
-        var copyError: Error?
-        NSFileCoordinator().coordinate(readingItemAt: source, options: [.withoutChanges], error: &coordinationError) { readable in
-            do { try FileManager.default.copyItem(at: readable, to: dest) } catch { copyError = error }
-        }
-        if let error = coordinationError ?? copyError {
-            throw AppError.message("Couldn’t open the file — if it’s in iCloud or Drive, download it to the device first (\(error.localizedDescription))")
+        let fm = FileManager.default
+        do {
+            // The document picker already hands over a local copy, so a plain copy normally works.
+            try fm.copyItem(at: source, to: dest)
+        } catch let plainError {
+            // Coordinated read makes file providers (iCloud Drive, Google Drive…) deliver the real file first.
+            var coordinationError: NSError?
+            var copyError: Error?
+            NSFileCoordinator().coordinate(readingItemAt: source, options: [], error: &coordinationError) { readable in
+                do {
+                    if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
+                    try fm.copyItem(at: readable, to: dest)
+                } catch { copyError = error }
+            }
+            if let error = coordinationError ?? copyError {
+                _ = plainError
+                throw AppError.message(AppError.describe(error, during: "Importing \(source.lastPathComponent)")
+                    + " — if the file is in iCloud or another cloud drive, download it to the iPhone first.")
+            }
         }
         return name
+    }
+
+    /// Imports a file picked "in place" (iCloud Drive, other cloud drives, On My iPhone).
+    /// Cloud files are asked to download first and we wait for them, with retries, before copying —
+    /// iCloud often answers with NSFileProviderErrorDomain -5009 while the file isn't on the device yet.
+    static func importPicked(_ source: URL, onStatus: @escaping @MainActor (String) -> Void = { _ in }) async throws -> String {
+        let scoped = source.startAccessingSecurityScopedResource()
+        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+
+        let fm = FileManager.default
+        let keys: Set<URLResourceKey> = [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]
+        if let values = try? source.resourceValues(forKeys: keys), values.isUbiquitousItem == true,
+           values.ubiquitousItemDownloadingStatus != .current {
+            await onStatus("Downloading from iCloud…")
+            try? fm.startDownloadingUbiquitousItem(at: source)
+            for _ in 0..<180 { // up to 90 s
+                try Task.checkCancellation()
+                var url = source
+                url.removeAllCachedResourceValues()
+                if let status = try? url.resourceValues(forKeys: keys).ubiquitousItemDownloadingStatus, status == .current { break }
+                try await Task.sleep(for: .milliseconds(500))
+            }
+        }
+
+        var lastError: Error = AppError.message("Couldn’t read the file")
+        for attempt in 0..<4 {
+            try Task.checkCancellation()
+            if attempt > 0 {
+                await onStatus("Retrying (\(attempt))…")
+                try? fm.startDownloadingUbiquitousItem(at: source)
+                try await Task.sleep(for: .seconds(2 * attempt))
+            }
+            do {
+                return try await Task.detached(priority: .userInitiated) { try importFile(source) }.value
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
     }
 
     static func delete(_ fileName: String?) {

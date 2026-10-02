@@ -62,6 +62,15 @@ targets:
         UIBackgroundModes: [audio]
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.audio, public.mpeg-4-audio, com.apple.m4a-audio, public.mp3, com.microsoft.waveform-audio, com.apple.coreaudio-format]
+          - CFBundleTypeName: PDF
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.pdf]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.plawan.intelligencebook

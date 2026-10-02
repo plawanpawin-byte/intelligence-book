@@ -75,30 +75,43 @@ enum SpeechTranscriber {
 
         var pieces: [String] = []
         var start: AVAudioFramePosition = 0
+        // Apple's server recognizer is clearly more accurate (especially for Thai) than the on-device one;
+        // fall back to on-device when the server fails (offline, daily limit).
+        var onDevice = false
         while start < totalFrames {
             try Task.checkCancellation()
             let count = min(sliceFrames, totalFrames - start)
             file.framePosition = start
 
-            let request = SFSpeechAudioBufferRecognitionRequest()
-            request.shouldReportPartialResults = false
-            request.addsPunctuation = true
-            if recognizer.supportsOnDeviceRecognition {
-                request.requiresOnDeviceRecognition = true
-            }
-
+            var buffers: [AVAudioPCMBuffer] = []
             var remaining = count
             while remaining > 0 {
                 let frames = AVAudioFrameCount(min(remaining, 16_384))
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { break }
                 try file.read(into: buffer, frameCount: frames)
                 if buffer.frameLength == 0 { break }
-                request.append(buffer)
+                buffers.append(buffer)
                 remaining -= AVAudioFramePosition(buffer.frameLength)
             }
-            request.endAudio()
 
-            let text = try await recognize(request, with: recognizer)
+            func makeRequest(onDevice: Bool) -> SFSpeechAudioBufferRecognitionRequest {
+                let request = SFSpeechAudioBufferRecognitionRequest()
+                request.shouldReportPartialResults = false
+                request.addsPunctuation = true
+                request.taskHint = .dictation
+                request.requiresOnDeviceRecognition = onDevice
+                buffers.forEach { request.append($0) }
+                request.endAudio()
+                return request
+            }
+
+            var text: String
+            do {
+                text = try await recognize(makeRequest(onDevice: onDevice), with: recognizer)
+            } catch where !onDevice && recognizer.supportsOnDeviceRecognition {
+                onDevice = true
+                text = try await recognize(makeRequest(onDevice: true), with: recognizer)
+            }
             if !text.isEmpty {
                 let seconds = Int(Double(start) / format.sampleRate)
                 pieces.append("[\(Timestamp.string(ms: seconds * 1000))] \(text)")
@@ -156,6 +169,8 @@ final class LiveTranscriber: @unchecked Sendable {
     private var texts: [Int: (start: Double, text: String)] = [:]
     private var done: Set<Int> = []
     private var cancelled = false
+    /// Server recognition first (more accurate); switches to on-device after a server failure.
+    private var onDevice = false
 
     init(locale: SpeechLocale, sampleRate: Double) {
         let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale.rawValue))
@@ -191,7 +206,7 @@ final class LiveTranscriber: @unchecked Sendable {
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
         request.taskHint = .dictation
-        if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
+        request.requiresOnDeviceRecognition = onDevice && recognizer.supportsOnDeviceRecognition
         let index = nextIndex
         nextIndex += 1
         segmentStart = frames
@@ -205,7 +220,11 @@ final class LiveTranscriber: @unchecked Sendable {
                 texts[index]?.text = result.bestTranscription.formattedString
                 if result.isFinal { done.insert(index) }
             }
-            if error != nil { done.insert(index) }
+            if let error {
+                done.insert(index)
+                let code = (error as NSError).code
+                if ![1110, 1101, 301, 203, 216].contains(code), recognizer.supportsOnDeviceRecognition { onDevice = true }
+            }
         }
         tasks.append(task)
     }

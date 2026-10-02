@@ -19,6 +19,7 @@ struct RootView: View {
             .tint(.accentColor)
             .task {
                 SourceProcessor.shared.resumePending(in: modelContext)
+                await Task.detached(priority: .background) { DeviceProfile.removeUnusedDownloads() }.value
             }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import SwiftData
 import PDFKit
 
@@ -22,6 +23,7 @@ struct LibraryView: View {
     @State private var selectAction: SelectAction?
     @State private var selection: Set<UUID> = []
     @State private var confirmDelete = false
+    @State private var openError: String?
 
     enum SelectAction { case pin, delete }
 
@@ -56,6 +58,13 @@ struct LibraryView: View {
                         path.append(notebook)
                     }
                     pendingNotebook = nil
+                }
+                // Audio / PDF shared from another app ("Open in IntelligenceBook", e.g. from Voice Memos).
+                .onOpenURL { openIncoming($0) }
+                .alert("Couldn’t open the file", isPresented: Binding(get: { openError != nil }, set: { if !$0 { openError = nil } })) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(openError ?? "")
                 }
                 .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                     TextField("Name", text: $renameText)
@@ -240,6 +249,27 @@ struct LibraryView: View {
         modelContext.insert(notebook)
         pendingNotebook = notebook
         return notebook
+    }
+
+    private func openIncoming(_ url: URL) {
+        guard url.isFileURL else { return }
+        do {
+            let isPDF = UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) ?? false
+            let name = try FileStore.importFile(url)
+            try? FileManager.default.removeItem(at: url) // the Inbox copy iOS made for us
+            let notebook = Notebook(title: "New notebook \(Date().formatted(date: .abbreviated, time: .shortened))")
+            modelContext.insert(notebook)
+            let source = Source(kind: isPDF ? .pdf : .audio, title: url.deletingPathExtension().lastPathComponent, fileName: name)
+            modelContext.insert(source)
+            source.notebook = notebook
+            notebook.touch()
+            SourceProcessor.shared.process(source)
+            autoGenerateIDs.insert(notebook.uuid)
+            path = NavigationPath()
+            path.append(notebook)
+        } catch {
+            openError = AppError.describe(error, during: "Opening the shared file")
+        }
     }
 
     private func createNotebook() {

@@ -63,37 +63,20 @@ enum LlamaVariant: String, CaseIterable, Identifiable {
     }
 }
 
-/// User-facing model preference stored in Settings.
-enum ModelPreference: String, CaseIterable, Identifiable {
-    case auto, b1, b3
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .auto: "Automatic (by device)"
-        case .b1: "1B — fast, low memory"
-        case .b3: "3B — smarter, slower"
-        }
-    }
-}
-
 enum DeviceProfile {
-    static let preferenceKey = "modelPreference"
-
     static var ramGB: Double { Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824 }
 
     static var processorCount: Int { ProcessInfo.processInfo.activeProcessorCount }
 
-    /// Always the 3B model; only devices too small to hold it (< ~5.5 GB RAM) fall back to 1B.
-    static var recommended: LlamaVariant {
-        ramGB >= 5.5 ? .b3 : .b1
-    }
+    /// The app always runs Llama 3.2 3B (shown as "Apple Foundation Models 3B"), on every device.
+    static let selected: LlamaVariant = .b3
 
-    static var preference: ModelPreference {
-        ModelPreference(rawValue: UserDefaults.standard.string(forKey: preferenceKey) ?? "") ?? .auto
+    /// Frees the space of a 1B model downloaded by older builds.
+    static func removeUnusedDownloads() {
+        for variant in LlamaVariant.allCases where variant != selected {
+            deleteDownload(variant)
+        }
     }
-
-    static var selected: LlamaVariant { recommended }
 
     static var deviceSummary: String {
         String(format: "%.1f GB RAM · %d cores", ramGB, processorCount)

@@ -10,8 +10,6 @@ final class SourceProcessor {
     private init() {}
 
     func process(_ source: Source) {
-        // Load the model while the source is being read, so writing starts right away.
-        LLMService.shared.prewarm()
         tasks[source.uuid]?.cancel()
         tasks[source.uuid] = Task { [weak self] in
             await self?.run(source)
@@ -35,14 +33,17 @@ final class SourceProcessor {
     private func run(_ source: Source) async {
         source.status = .processing
         source.detail = nil
+        var step = "Reading the source"
         do {
             switch source.kind {
             case .pdf:
                 guard let url = source.fileURL else { throw AppError.message("File not found") }
+                step = "Reading the PDF"
                 source.detail = "Reading PDF"
                 source.text = try await PDFExtractor.extract(url: url)
 
             case .web:
+                step = "Loading the web page"
                 source.detail = "Fetching web page"
                 let result = try await WebExtractor.fetch(source.urlString ?? "")
                 source.text = result.text
@@ -57,6 +58,7 @@ final class SourceProcessor {
 
             case .audio, .recording:
                 guard let url = source.fileURL else { throw AppError.message("Audio file not found") }
+                step = "Transcribing the audio"
                 source.detail = "Transcribing 0%"
                 source.text = try await SpeechTranscriber.transcribe(url: url, locale: .current) { fraction in
                     source.detail = "Transcribing \(Int(fraction * 100))%"
@@ -74,7 +76,7 @@ final class SourceProcessor {
             source.detail = "Cancelled"
         } catch {
             source.status = .failed
-            source.detail = error.localizedDescription
+            source.detail = AppError.describe(error, during: step)
         }
     }
 }

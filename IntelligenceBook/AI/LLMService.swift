@@ -53,17 +53,34 @@ final class LLMService {
         state = DeviceProfile.isDownloaded(variant) ? .loading : .downloading(0)
 
         let task = Task<ModelContainer, Error> {
-            try await LLMModelFactory.shared.loadContainer(
-                from: #hubDownloader(),
-                using: #huggingFaceTokenizerLoader(),
-                configuration: variant.configuration,
-                progressHandler: { progress in
-                    let fraction = progress.fractionCompleted
-                    Task { @MainActor in
-                        LLMService.shared.reportDownload(fraction)
+            func load() async throws -> ModelContainer {
+                try await LLMModelFactory.shared.loadContainer(
+                    from: #hubDownloader(),
+                    using: #huggingFaceTokenizerLoader(),
+                    configuration: variant.configuration,
+                    progressHandler: { progress in
+                        let fraction = progress.fractionCompleted
+                        Task { @MainActor in
+                            LLMService.shared.reportDownload(fraction)
+                        }
                     }
+                )
+            }
+            do {
+                return try await load()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // A broken or half-finished download (e.g. the app was closed mid-download) makes every
+                // later load fail with a file error. Start the download over once.
+                DeviceProfile.deleteDownload(variant)
+                await MainActor.run { LLMService.shared.state = .downloading(0) }
+                do {
+                    return try await load()
+                } catch {
+                    throw AppError.message(AppError.describe(error, during: "Loading the AI model"))
                 }
-            )
+            }
         }
         loadTask = task
         defer { loadTask = nil }
@@ -108,10 +125,11 @@ final class LLMService {
         prompt: String,
         maxTokens: Int,
         temperature: Float = 0.4,
+        examples: [FewShot] = [],
         continueIfCut: Bool = false,
         onUpdate: ((String) -> Void)? = nil
     ) async throws -> String {
-        var (text, cut) = try await stream(system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, prefix: "", onUpdate: onUpdate)
+        var (text, cut) = try await stream(system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, examples: examples, prefix: "", onUpdate: onUpdate)
         var passes = 0
         while cut && continueIfCut && passes < 2 {
             passes += 1
@@ -128,7 +146,7 @@ final class LLMService {
             let joiner = text.hasSuffix("\n") ? "" : (text.last?.isWhitespace == true ? "" : " ")
             let (more, stillCut) = try await stream(
                 system: system, prompt: continuation, maxTokens: maxTokens, temperature: temperature,
-                prefix: text + joiner, onUpdate: onUpdate
+                examples: examples, prefix: text + joiner, onUpdate: onUpdate
             )
             text += joiner + more
             cut = stillCut
@@ -143,6 +161,7 @@ final class LLMService {
         prompt: String,
         maxTokens: Int,
         temperature: Float,
+        examples: [FewShot],
         prefix: String,
         onUpdate: ((String) -> Void)?
     ) async throws -> (String, Bool) {
@@ -155,7 +174,19 @@ final class LLMService {
         parameters.repetitionPenalty = 1.1
         parameters.repetitionContextSize = 96
 
-        let session = ChatSession(model, instructions: system, generateParameters: parameters)
+        // Worked examples go in as earlier chat turns: a small model copies the pattern without
+        // mistaking the example for the material (which happens when the example is inside the prompt).
+        let session: ChatSession
+        if examples.isEmpty {
+            session = ChatSession(model, instructions: system, generateParameters: parameters)
+        } else {
+            var history: [Chat.Message] = [.system(system)]
+            for example in examples {
+                history.append(.user(example.user))
+                history.append(.assistant(example.assistant))
+            }
+            session = ChatSession(model, history: history, generateParameters: parameters)
+        }
         var text = ""
         var lastCheck = 0
         var hitLimit = false
@@ -177,6 +208,12 @@ final class LLMService {
         }
         return (text, hitLimit)
     }
+}
+
+/// One worked example (user message → ideal reply) shown to the model before the real request.
+struct FewShot: Sendable {
+    let user: String
+    let assistant: String
 }
 
 /// Detects and removes the "same line again and again" failure of small models.

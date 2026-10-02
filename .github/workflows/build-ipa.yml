@@ -28,6 +28,12 @@ jobs:
           sudo xcode-select -s "$XC/Contents/Developer"
           xcodebuild -version
 
+      - name: Self-check (Thai number conversion)
+        run: |
+          set -o pipefail
+          xcrun swiftc -O IntelligenceBook/AI/ThaiNumbers.swift tools/swiftcheck/main.swift -o "$RUNNER_TEMP/selfcheck" 2>&1 | tee build.log
+          "$RUNNER_TEMP/selfcheck" 2>&1 | tee -a build.log
+
       - name: Install Metal toolchain (needed by MLX shaders)
         run: xcodebuild -downloadComponent MetalToolchain || true
 

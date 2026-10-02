@@ -129,13 +129,13 @@ struct GenerateView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .contentTransition(.opacity)
-                    Text("Keep the app open while it writes — the screen stays on (iOS pauses on-device AI in the background).")
+                    Text("The AI first reads and understands every part, then writes. Keep the app open — the screen stays on (iOS pauses on-device AI in the background).")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
                 .padding(.bottom, 4)
 
-                if case .writing = job.phase {
+                if job.isWritingNote {
                     NoteContentView(markdown: job.output)
                 } else if !job.output.isEmpty {
                     Text(job.output)

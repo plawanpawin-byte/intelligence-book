@@ -20,6 +20,7 @@ private struct SourceImportModifier: ViewModifier {
     let onAdded: (Source) -> Void
 
     @State private var importError: String?
+    @State private var importStatus: String?
 
     private var sheetKind: Binding<SourceKind?> {
         Binding(
@@ -52,6 +53,16 @@ private struct SourceImportModifier: ViewModifier {
                     }
                 }
             }
+            .overlay(alignment: .top) {
+                if let importStatus {
+                    Label(importStatus, systemImage: "icloud.and.arrow.down")
+                        .font(.footnote.weight(.medium))
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
             .alert("Import failed", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -62,17 +73,21 @@ private struct SourceImportModifier: ViewModifier {
     private func handleFiles(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
-            importError = error.localizedDescription
+            importError = AppError.describe(error, during: "Choosing the file")
         case .success(let urls):
-            for url in urls {
-                do {
-                    let isPDF = UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) ?? false
-                    let name = try FileStore.importFile(url)
-                    let title = url.deletingPathExtension().lastPathComponent
-                    add(Source(kind: isPDF ? .pdf : .audio, title: title, fileName: name))
-                } catch {
-                    importError = error.localizedDescription
+            Task { @MainActor in
+                for url in urls {
+                    importStatus = "Importing \(url.lastPathComponent)…"
+                    do {
+                        let isPDF = UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) ?? false
+                        let name = try await FileStore.importPicked(url) { status in importStatus = status }
+                        let title = url.deletingPathExtension().lastPathComponent
+                        add(Source(kind: isPDF ? .pdf : .audio, title: title, fileName: name))
+                    } catch {
+                        importError = AppError.describe(error, during: "Importing \(url.lastPathComponent)")
+                    }
                 }
+                importStatus = nil
             }
         }
     }
@@ -94,14 +109,15 @@ private struct SourceImportModifier: ViewModifier {
 
 // MARK: - Document picker
 
-/// UIDocumentPicker in copy mode: iOS downloads the file from iCloud / Drive / other providers and hands
-/// over a local copy, which avoids NSFileProviderErrorDomain errors from not-yet-downloaded files.
+/// UIDocumentPicker that opens files in place (security-scoped). We download cloud files ourselves
+/// (FileStore.importPicked), waiting and retrying — copy mode fails outright with
+/// NSFileProviderErrorDomain -5009 whenever iCloud can't deliver the file immediately.
 struct DocumentPicker: UIViewControllerRepresentable {
     let types: [UTType]
     let onPick: ([URL]) -> Void
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
         picker.allowsMultipleSelection = true
         picker.delegate = context.coordinator
         return picker
