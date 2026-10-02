@@ -859,8 +859,8 @@ def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print, 
             units[-1][1].extend(bs)
         else:
             units.append([topic, list(bs)])
-    sections = [write_section(t, bs, f"write {i+1}/{len(units)}") for i, (t, bs) in enumerate(units)]
-    sections = merge_sections(sections)
+    raw_sections = [write_section(t, bs, f"write {i+1}/{len(units)}") for i, (t, bs) in enumerate(units)]
+    sections = merge_sections(raw_sections) or [s for s in raw_sections if s.strip()] or ["## Notes\n\n" + "\n".join(all_facts)]
 
     # 3. frame
     outline = outline_of(sections, per_section=max(200, 5000 // max(1, len(sections))))
