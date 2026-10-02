@@ -1496,3 +1496,65 @@ def run_v13(llm, sources, style="summary", language="auto", cfg=None, log=print)
     if is_thai(note):
         note = strip_english_sentences(note)
     return note
+
+
+
+# ----------------------------------------------------------------------------- small: for 1B — facts only, assembled by code
+
+def run_small(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    """1B models make things up when they write prose: they only extract facts; code assembles the note."""
+    cfg = dict(cfg or {})
+    kinds = {s_["kind"] for s_ in sources}
+    spoken = bool(kinds & {"audio", "recording"})
+    texts = []
+    for s_ in sources:
+        t = clean_source(s_["kind"], s_["text"])
+        if s_["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        texts.append(t)
+    corpus = "\n\n".join(texts)
+    lang = language if language != "auto" else ("thai" if is_thai(corpus) else "english")
+    th = lang == "thai"
+    allowed = numbers_in(corpus)
+    ex_src, ex_facts = (EX_TH_SPEECH, EX_TH_FACTS) if th else (EX_EN_SPEECH, EX_EN_FACTS)
+    source_lower = corpus.lower()
+    chunks = []
+    for t in texts:
+        chunks += split(t, cfg.get("small_chunk", 1200))
+    sections, seen, grams = [], set(), []
+    for i, c in enumerate(chunks):
+        out, _ = llm.chat(v3_facts_system(lang, spoken), f"<material>\n{c}\n</material>", 500, temperature=0.0,
+                          rep_penalty=1.1, guard=is_looping, label=f"facts {i+1}/{len(chunks)}",
+                          history=[(f"<material>\n{ex_src}\n</material>", ex_facts)])
+        out = remove_example_lines(out, [ex_facts, ex_src])
+        topic, bullets = split_facts_v5(dedupe(out))
+        keep = []
+        for b in bullets:
+            k = key(b)
+            if not k or k in seen or ungrounded(b, allowed) or leaked_words(b, source_lower):
+                continue
+            if near_duplicate(b, grams):
+                continue
+            seen.add(k); grams.append(trigrams(b)); keep.append(b)
+        if keep:
+            topic = topic if topic and not leaked_words(topic, source_lower) else ("ส่วนที่ %d" % (i + 1) if th else "Part %d" % (i + 1))
+            if sections and sections[-1][0] == topic:
+                sections[-1][1].extend(keep)
+            else:
+                sections.append([topic, keep])
+    if not sections:
+        return "# Note\n\n" + corpus[:1500]
+    title = sections[0][0]
+    overview, _ = llm.chat("Write in Thai (ภาษาไทย)." if th else "Write in English.",
+                           "<facts>\n" + "\n".join(b for _, bs in sections for b in bs)[:2500] + "\n</facts>\n\n" +
+                           "Write 2–3 sentences that summarise these facts. Use only the facts. Output only the sentences.",
+                           200, temperature=0.0, rep_penalty=1.1, guard=is_looping, label="overview")
+    overview = " ".join(l.strip() for l in strip_fences(overview).split("\n") if l.strip())
+    if ungrounded(overview, allowed) or leaked_words(overview, source_lower):
+        overview = ""
+    parts = [f"# {title}"]
+    if overview:
+        parts.append("> [!summary] " + ("ภาพรวม" if th else "Overview") + "\n> " + overview)
+    for topic, bs in sections:
+        parts.append(f"## {topic}\n\n" + "\n".join(bs))
+    return "\n\n".join(parts)

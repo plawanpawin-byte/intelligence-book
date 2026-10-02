@@ -1,27 +1,22 @@
 {
- "defaults": {
-  "chunk_chars": 6000,
-  "max_units": 6,
-  "temperature": 0.4,
-  "rep_penalty": 1.1
- },
+ "defaults": {},
  "jobs": [
   {
-   "id": "econ-l1b",
+   "id": "econ-1bsmall",
    "case": "th_lecture_econ",
-   "pipeline": "v13",
+   "pipeline": "small",
    "model": "mlx-community/Llama-3.2-1B-Instruct-4bit"
   },
   {
-   "id": "short-l1b",
+   "id": "short-1bsmall",
    "case": "th_short_recording",
-   "pipeline": "v13",
+   "pipeline": "small",
    "model": "mlx-community/Llama-3.2-1B-Instruct-4bit"
   },
   {
-   "id": "talk-l1b",
+   "id": "talk-1bsmall",
    "case": "th_talk_medium",
-   "pipeline": "v13",
+   "pipeline": "small",
    "model": "mlx-community/Llama-3.2-1B-Instruct-4bit"
   }
  ]
