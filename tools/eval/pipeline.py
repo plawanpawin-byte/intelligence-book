@@ -1153,3 +1153,91 @@ def run_v6(llm, sources, style="summary", language="auto", cfg=None, log=print):
     note = ground_numbers(note, allowed)
     th = is_thai(note)
     return normalize_markdown(note, th)
+
+
+
+# ----------------------------------------------------------------------------- v7 = v6 + per-fact leak filter, one "## " per section,
+#                                                 retry-with-example first, longer opening, numbered Q&A → callouts
+
+def one_h2(section):
+    seen = False
+    out = []
+    for line in section.split("\n"):
+        if line.startswith("## "):
+            if seen:
+                line = "#" + line
+            seen = True
+        out.append(line)
+    return "\n".join(out)
+
+
+QA_NUM = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+(.+\?)\s*$")
+ANS = re.compile(r"^\s*>?\s*\*\*(?:Answer|คำตอบ)\s*[:：]\*\*")
+
+
+def qa_callouts(text):
+    lines = text.split("\n")
+    out = []
+    for i, line in enumerate(lines):
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        m = QA_NUM.match(line)
+        if m and ANS.match(nxt):
+            out.append("> [!question] " + m.group(1).strip())
+            continue
+        if ANS.match(line) and not line.lstrip().startswith(">"):
+            prev = out[-1].strip() if out else ""
+            if prev.startswith(">"):
+                out.append("> " + line.strip())
+            continue  # an answer without a question
+        if ANS.match(line) and line.lstrip().startswith(">"):
+            prev = out[-1].strip() if out else ""
+            if not prev.startswith(">"):
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def run_v7(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    orig_chat = llm.chat
+    example_facts = [EX_TH_FACTS, EX_EN_FACTS]
+
+    def chat7(system, user, max_tokens, **kw):
+        label = kw.get("label", "")
+        if label == "open":
+            max_tokens = 700
+        out, cut = orig_chat(system, user, max_tokens, **kw)
+        hist = kw.get("history") or ()
+        if hist:
+            ex_answer = hist[0][1]
+            r = leak_ratio(out, ex_answer)
+            if r > 0.2:
+                kw2 = dict(kw, temperature=0.6, label=label + " (retry hot: leak %.2f)" % r)
+                out, cut = orig_chat(system, user, max_tokens, **kw2)
+                if leak_ratio(out, ex_answer) > 0.2:
+                    kw3 = dict(kw, history=(), label=label + " (retry no example)")
+                    out, cut = orig_chat(system, user, max_tokens, **kw3)
+            if label.startswith("facts"):
+                kept = []
+                for line in out.split("\n"):
+                    if len(line.strip()) > 20 and any(leak_ratio(line, ef, n=10) > 0.5 for ef in example_facts):
+                        continue
+                    kept.append(line)
+                out = "\n".join(kept)
+            if label.startswith("write"):
+                out = one_h2(out)
+        return out, cut
+
+    llm.chat = chat7
+    try:
+        note = run_v5(llm, sources, style, language, cfg, log)
+    finally:
+        llm.chat = orig_chat
+    allowed = set()
+    for s_ in sources:
+        t = s_["text"]
+        if s_["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        allowed |= numbers_in(t)
+    note = ground_numbers(note, allowed)
+    note = qa_callouts(note)
+    return normalize_markdown(note, is_thai(note))
