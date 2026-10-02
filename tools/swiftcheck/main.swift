@@ -68,5 +68,15 @@ check("merge", SectionTools.merge(["## A\n\nfirst body text that is long enough 
       "## A\n\nfirst body text that is long enough to keep here\n\nsecond body text that is long enough to keep too")
 check("thai detect", String(LanguageDetector.isThai("อุปสงค์ demand คือ")), "true")
 
+check("qa callouts",
+      MarkdownFixer.fix(MarkdownFixer.questionCallouts("## คำถามทบทวน\n> **คำตอบ:** orphan\n\n1. คุณอธิบายกฎของอุปสงค์ได้อย่างไร?\n**คำตอบ:** กฎของอุปสงค์ บอกว่า\n\n> [!question] ok?\n> **คำตอบ:** fine"), thai: true),
+      "## คำถามทบทวน\n\n> [!question] คุณอธิบายกฎของอุปสงค์ได้อย่างไร?\n> **คำตอบ:** กฎของอุปสงค์ บอกว่า\n\n> [!question] ok?\n> **คำตอบ:** fine")
+check("one h2", SectionTools.normalize("## A\ntext\n## B\nmore", topic: ""), "## A\ntext\n### B\nmore")
+check("h1 to h2", SectionTools.normalize("# A\ntext\n# B", topic: ""), "## A\ntext\n### B")
+check("example line filter",
+      FactList.removeExampleLines("TOPIC: x\n- อุปสงค์คือปริมาณที่ผู้บริโภคเต็มใจซื้อ\n- ตัวอย่างผลกระทบ: ภูเขาไฟปินาตูโบระเบิดในปี 1991 เถ้าถ่านบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี",
+                                  example: "- ตัวอย่างผลกระทบ: ภูเขาไฟปินาตูโบระเบิดในปี 1991 เถ้าถ่านบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี"),
+      "TOPIC: x\n- อุปสงค์คือปริมาณที่ผู้บริโภคเต็มใจซื้อ")
+
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
 exit(failed == 0 ? 0 : 1)

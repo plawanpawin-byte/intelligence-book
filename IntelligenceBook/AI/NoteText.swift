@@ -133,6 +133,13 @@ enum FactList {
         return false
     }
 
+    /// Drops fact lines copied from the worked example (the model sometimes appends one of its facts).
+    static func removeExampleLines(_ raw: String, example: String) -> String {
+        raw.components(separatedBy: "\n").filter { line in
+            line.trimmingCharacters(in: .whitespaces).count <= 20 || Grounding.overlap(line, with: example, size: 10) <= 0.5
+        }.joined(separator: "\n")
+    }
+
     /// An evenly spread sample of the facts that fits the character budget.
     static func sample(_ facts: [String], maxCharacters: Int) -> String {
         let all = facts.joined(separator: "\n")
@@ -156,8 +163,13 @@ enum SectionTools {
 
     /// Makes sure a section starts with "## " and contains no "# " title.
     static func normalize(_ section: String, topic: String) -> String {
+        // One "## " per section: a "# " title or any further "## " becomes a "### " sub-heading.
+        var seenH2 = false
         var lines = section.components(separatedBy: "\n").map { line -> String in
-            line.hasPrefix("# ") ? "#" + line : line
+            let h2: String
+            if line.hasPrefix("# ") { h2 = "#" + line } else if line.hasPrefix("## ") { h2 = line } else { return line }
+            defer { seenH2 = true }
+            return seenH2 ? "#" + h2 : h2
         }
         while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeFirst() }
         var text = lines.joined(separator: "\n")
@@ -199,6 +211,32 @@ enum SectionTools {
 
 /// Fixes the small format slips of a 3B model so callouts render properly.
 enum MarkdownFixer {
+    /// "1. Question?" followed by "**Answer:** …" → a question callout; answers without a question are dropped.
+    static func questionCallouts(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        func isAnswer(_ line: String) -> Bool {
+            line.range(of: "^\\s*>?\\s*\\*\\*(?:Answer|คำตอบ)\\s*[:：]\\*\\*", options: .regularExpression) != nil
+        }
+        var out: [String] = []
+        for (index, line) in lines.enumerated() {
+            let next = index + 1 < lines.count ? lines[index + 1] : ""
+            if isAnswer(next), let range = line.range(of: "^\\s*(?:\\d+[.)]|[-*])\\s+", options: .regularExpression),
+               line.trimmingCharacters(in: .whitespaces).hasSuffix("?") {
+                out.append("> [!question] " + line[range.upperBound...].trimmingCharacters(in: .whitespaces))
+                continue
+            }
+            if isAnswer(line) {
+                let previousIsCallout = out.last?.trimmingCharacters(in: .whitespaces).hasPrefix(">") == true
+                guard previousIsCallout else { continue } // an answer without its question
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                out.append(trimmed.hasPrefix(">") ? line : "> " + trimmed)
+                continue
+            }
+            out.append(line)
+        }
+        return out.joined(separator: "\n")
+    }
+
     static func fix(_ text: String, thai: Bool) -> String {
         var out: [String] = []
         for var line in text.components(separatedBy: "\n") {

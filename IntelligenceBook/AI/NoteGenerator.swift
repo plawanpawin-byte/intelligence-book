@@ -104,7 +104,8 @@ final class GenerationJob {
             }
             // Lines or callouts that state a number the sources never mention are made up: drop them.
             let allowed = Grounding.numbers(in: texts.joined(separator: "\n"))
-            output = MarkdownFixer.fix(Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed), thai: thai)
+            let grounded = Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed)
+            output = MarkdownFixer.fix(MarkdownFixer.questionCallouts(grounded), thai: thai)
             progress = 1
             phase = .done
         } catch is CancellationError {
@@ -115,19 +116,26 @@ final class GenerationJob {
     }
 
     /// One model call with a worked example. When thin material makes the model hand back the example itself
-    /// (it happens with a 3B model), the call is repeated without the example.
+    /// (it happens with a 3B model), the call is repeated hotter, and finally without the example.
     private func ask(
         system: String, prompt: String, maxTokens: Int, temperature: Float, example: FewShot,
         onUpdate: @escaping (String) -> Void
     ) async throws -> String {
         let llm = LLMService.shared
-        let text = try await llm.generate(
+        var text = try await llm.generate(
             system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, examples: [example], onUpdate: onUpdate
         )
-        guard Grounding.overlap(text, with: example.assistant) > 0.2 else { return text }
-        return try await llm.generate(
-            system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, onUpdate: onUpdate
-        )
+        if Grounding.overlap(text, with: example.assistant) > 0.2 {
+            text = try await llm.generate(
+                system: system, prompt: prompt, maxTokens: maxTokens, temperature: 0.6, examples: [example], onUpdate: onUpdate
+            )
+            if Grounding.overlap(text, with: example.assistant) > 0.2 {
+                text = try await llm.generate(
+                    system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, onUpdate: onUpdate
+                )
+            }
+        }
+        return text
     }
 
     // MARK: Short material: facts → one compact section, no padding.
@@ -139,7 +147,7 @@ final class GenerationJob {
             system: kit.factsSystem, prompt: kit.factsPrompt(corpus), maxTokens: 500, temperature: 0.2,
             example: kit.factsExample
         ) { [weak self] partial in self?.output = partial }
-        let facts = FactList.parse(factsText)
+        let facts = FactList.parse(FactList.removeExampleLines(factsText, example: kit.factsExample.assistant))
         phase = .writing(1, 1)
         progress = 0.5
         var section = try await ask(
@@ -193,7 +201,7 @@ final class GenerationJob {
                 example: kit.factsExample
             ) { [weak self] partial in self?.output = partial }
             tick()
-            let parsed = FactList.parse(raw)
+            let parsed = FactList.parse(FactList.removeExampleLines(raw, example: kit.factsExample.assistant))
             var fresh: [String] = []
             for fact in parsed.facts {
                 let key = FactList.key(fact)
@@ -245,7 +253,7 @@ final class GenerationJob {
         let body = sections.joined(separator: "\n\n")
         let outline = SectionTools.outline(sections, perSection: max(200, 5000 / max(1, sections.count)))
         var opening = try await ask(
-            system: kit.openSystem, prompt: kit.openPrompt(outline), maxTokens: 450, temperature: 0.4,
+            system: kit.openSystem, prompt: kit.openPrompt(outline), maxTokens: 700, temperature: 0.4,
             example: kit.openExample
         ) { [weak self] partial in self?.output = partial + "\n\n" + body }
         tick()
