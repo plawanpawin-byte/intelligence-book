@@ -80,7 +80,9 @@ check("example line filter",
 
 check("heading questions", MarkdownFixer.headingQuestions("## คำถามทบทวน\n\n### 1. อะไรคือผลทางการทดแทน\n## Other\n### 1. keep"),
       "## คำถามทบทวน\n\n> [!question] อะไรคือผลทางการทดแทน\n## Other\n### 1. keep")
-check("hook", "\(SectionTools.hasHook("# T\n\n> [!summary] x\n> y")) \(SectionTools.hasHook("# T\n\nรู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5"))"), "false true")
+let hookA = SectionTools.hasHook("# T\n\n> [!summary] x\n> y")
+let hookB = SectionTools.hasHook("# T\n\nรู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5")
+check("hook", "\(hookA) \(hookB)", "false true")
 
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
 exit(failed == 0 ? 0 : 1)
