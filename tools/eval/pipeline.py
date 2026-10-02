@@ -1241,3 +1241,93 @@ def run_v7(llm, sources, style="summary", language="auto", cfg=None, log=print):
     note = ground_numbers(note, allowed)
     note = qa_callouts(note)
     return normalize_markdown(note, is_thai(note))
+
+
+
+# ----------------------------------------------------------------------------- v8 = v7 + line-level example filter everywhere, no table in the
+#                                                 example, separate hook call when missing, "### 1. q" → question callouts
+
+EX_TH_SECTION_V8 = EX_TH_SECTION.replace("""| แบบ | ลาวา | การปะทุ | ตัวอย่าง |
+|---|---|---|---|
+| ภูเขาไฟรูปโล่ (shield volcano) | เหลว ไหลไปไกล | ไม่ค่อยระเบิด | ฮาวาย |
+| ภูเขาไฟสลับชั้น (stratovolcano) | หนืด แก๊สออกไม่ได้ | ระเบิดรุนแรง | ฟูจิ |""", """- **ภูเขาไฟรูปโล่ (shield volcano)**: ลาวาเหลว ไหลไปได้ไกล จึงไม่ค่อยระเบิด เช่น ฮาวาย
+- **ภูเขาไฟสลับชั้น (stratovolcano)**: ลาวาหนืดจนแก๊สออกไม่ได้ จึงระเบิดรุนแรง เช่น ฟูจิ""")
+EX_EN_SECTION_V8 = EX_EN_SECTION.replace("""| Type | Lava | Eruption | Example |
+|---|---|---|---|
+| Shield volcano | runny, flows far | rarely explosive | Hawaii |
+| Stratovolcano | thick, traps gas | violent | Mount Fuji |""", """- **Shield volcano**: runny lava that flows far, so it rarely explodes — e.g. Hawaii
+- **Stratovolcano**: thick lava traps gas, so it erupts violently — e.g. Mount Fuji""")
+assert EX_TH_SECTION_V8 != EX_TH_SECTION and EX_EN_SECTION_V8 != EX_EN_SECTION
+
+
+def remove_example_lines(text, examples):
+    out = []
+    for line in text.split("\n"):
+        if len(line.strip()) > 20 and any(leak_ratio(line, ex, n=10) > 0.5 for ex in examples):
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+Q_HEAD = re.compile(r"^#{2,6}\s*(?:\d+[.)]\s*)?(.+?)\s*$")
+
+
+def heading_questions(text):
+    """Inside the review-questions section, numbered "### 1. question" headings become question callouts."""
+    lines = text.split("\n")
+    out, in_review = [], False
+    for line in lines:
+        if line.startswith("## "):
+            in_review = any(k in line for k in ("คำถาม", "Review", "question"))
+            out.append(line)
+            continue
+        if in_review and re.match(r"^#{3,6}\s*\d+[.)]", line):
+            q = Q_HEAD.match(line).group(1)
+            out.append("> [!question] " + q)
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+def has_hook(opening):
+    for line in opening.split("\n"):
+        t = line.strip()
+        if t and not t.startswith(("#", ">")) and len(t) > 40:
+            return True
+    return False
+
+
+def run_v8(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    global EX_TH_SECTION, EX_EN_SECTION
+    saved = (EX_TH_SECTION, EX_EN_SECTION)
+    EX_TH_SECTION, EX_EN_SECTION = EX_TH_SECTION_V8, EX_EN_SECTION_V8
+    examples = [EX_TH_FACTS, EX_EN_FACTS, EX_TH_SECTION_V8, EX_EN_SECTION_V8, EX_TH_SPEECH, EX_EN_SPEECH]
+    orig_chat = llm.chat
+    state = {"outline": None, "th": True}
+
+    def chat8(system, user, max_tokens, **kw):
+        label = kw.get("label", "")
+        out, cut = orig_chat(system, user, max_tokens, **kw)
+        if kw.get("history"):
+            out = remove_example_lines(out, examples)
+        if label.startswith("open") and not has_hook(out):
+            th = "ภาษาไทย" in system
+            hook, _ = orig_chat(system, user + "\n\nNow write ONLY the hook paragraph: 2–3 sentences that make people want to read on, "
+                                "starting from the most surprising fact or striking number in the outline.", 250,
+                                temperature=0.5, label="hook")
+            hook = strip_fences(hook).strip().split("\n\n")[0]
+            lines = out.split("\n")
+            if lines and lines[0].startswith("# "):
+                out = lines[0] + "\n\n" + hook + "\n\n" + "\n".join(lines[1:]).strip()
+            else:
+                out = hook + "\n\n" + out
+        return out, cut
+
+    llm.chat = chat8
+    try:
+        note = run_v7(llm, sources, style, language, cfg, log)
+    finally:
+        llm.chat = orig_chat
+        EX_TH_SECTION, EX_EN_SECTION = saved
+    note = heading_questions(note)
+    return normalize_markdown(note, is_thai(note))
