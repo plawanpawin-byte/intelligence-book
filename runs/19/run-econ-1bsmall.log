@@ -1,0 +1,5 @@
+Fetching 6 files:   0%|          | 0/6 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Fetching 6 files:  33%|███▎      | 2/6 [00:00<00:00, 17.56it/s]Fetching 6 files: 100%|██████████| 6/6 [00:04<00:00,  1.13it/s]Fetching 6 files: 100%|██████████| 6/6 [00:04<00:00,  1.25it/s]
+backend: mlx:Llama-3.2-1B-Instruct-4bit
+<!-- job=econ-1bsmall backend=mlx:Llama-3.2-1B-Instruct-4bit seconds=126 calls=14 prompt_tokens=19021 gen_tokens=5424 source_chars=15167 source_tokens=7396 note_chars=6826 metrics={'chars': 6826, 'copy_ratio': 0.248, 'fillers': 1, 'dup_headings': 0, 'sections': 13, 'callouts': 1} -->
+
