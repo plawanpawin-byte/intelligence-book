@@ -834,10 +834,13 @@ def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print, 
     for i, c in enumerate(chunks):
         topic, bullets = facts_of(c, f"facts {i+1}/{len(chunks)}")
         fresh = []
+        allowed_nums = globals().get("_allowed_numbers")
         for b in bullets:
             k = key(b)
             if not k or k in seen:
                 continue
+            if allowed_nums is not None and ungrounded(b, allowed_nums):
+                continue  # a fact with a number the material never says (the model did arithmetic)
             if globals().get("_dedupe_mode") == "fuzzy":
                 if near_duplicate(b, seen_grams):
                     continue
@@ -995,6 +998,8 @@ def run_v4(llm, sources, style="summary", language="auto", cfg=None, log=print):
                           rep_penalty=rp, guard=is_looping, label="facts",
                           history=[(f"<material>\n{ex_src}\n</material>", ex_facts)])
         topic, bullets = split_facts(dedupe(out))
+        if globals().get("_allowed_numbers") is not None:
+            bullets = [b for b in bullets if not ungrounded(b, globals()["_allowed_numbers"])]
         facts = (f"TOPIC: {topic}\n" if topic else "") + "\n".join(bullets)
         sec, _ = llm.chat(v3_write_system(lang) + V4_SHORT_RULE, f"<facts>\n{facts}\n</facts>", 600, temperature=0.3,
                           rep_penalty=rp, guard=is_looping, label="write",
@@ -1354,3 +1359,21 @@ def run_v9(llm, sources, style="summary", language="auto", cfg=None, log=print):
         return run_v8(llm, sources, style, language, cfg, log)
     finally:
         globals()["_split_groups"] = False
+
+
+
+def run_v10(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    """v9 + facts with made-up numbers are dropped before writing; smaller chunks for fact extraction."""
+    cfg = dict(cfg or {})
+    cfg.setdefault("v3_chunk_chars", 2000)
+    allowed = set()
+    for s_ in sources:
+        t = s_["text"]
+        if s_["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        allowed |= numbers_in(t)
+    globals()["_allowed_numbers"] = allowed
+    try:
+        return run_v9(llm, sources, style, language, cfg, log)
+    finally:
+        globals()["_allowed_numbers"] = None
