@@ -1,0 +1,92 @@
+[
+ {
+  "label": "facts 1/4",
+  "prompt_tokens": 2376,
+  "gen_tokens": 563,
+  "seconds": 46.55097198486328,
+  "finish": "stop",
+  "prompt_tps": 135.24811625796102,
+  "gen_tps": 19.448530722381502
+ },
+ {
+  "label": "facts 2/4",
+  "prompt_tokens": 2489,
+  "gen_tokens": 527,
+  "seconds": 37.73551607131958,
+  "finish": "stop",
+  "prompt_tps": 304.14218839543986,
+  "gen_tps": 17.85396909211158
+ },
+ {
+  "label": "facts 3/4",
+  "prompt_tokens": 2795,
+  "gen_tokens": 700,
+  "seconds": 45.68187689781189,
+  "finish": "length",
+  "prompt_tps": 293.9221538762664,
+  "gen_tps": 19.37055063640421
+ },
+ {
+  "label": "facts 4/4",
+  "prompt_tokens": 2446,
+  "gen_tokens": 605,
+  "seconds": 37.23592686653137,
+  "finish": "stop",
+  "prompt_tps": 270.54925868562975,
+  "gen_tps": 21.479728845406097
+ },
+ {
+  "label": "write 1/4",
+  "prompt_tokens": 1603,
+  "gen_tokens": 831,
+  "seconds": 48.08991479873657,
+  "finish": "stop",
+  "prompt_tps": 284.5093510616664,
+  "gen_tps": 19.588913816245597
+ },
+ {
+  "label": "write 2/4",
+  "prompt_tokens": 1575,
+  "gen_tokens": 894,
+  "seconds": 50.599945068359375,
+  "finish": "stop",
+  "prompt_tps": 293.21262114377504,
+  "gen_tps": 19.782120083443356
+ },
+ {
+  "label": "write 3/4",
+  "prompt_tokens": 1749,
+  "gen_tokens": 331,
+  "seconds": 22.737342834472656,
+  "finish": "stop",
+  "prompt_tps": 298.4844723800346,
+  "gen_tps": 19.65442410842037
+ },
+ {
+  "label": "write 4/4",
+  "prompt_tokens": 1609,
+  "gen_tokens": 735,
+  "seconds": 43.03947114944458,
+  "finish": "stop",
+  "prompt_tps": 299.3512552434308,
+  "gen_tps": 19.53250185886801
+ },
+ {
+  "label": "open",
+  "prompt_tokens": 2224,
+  "gen_tokens": 210,
+  "seconds": 19.06469225883484,
+  "finish": "stop",
+  "prompt_tps": 285.6324302996749,
+  "gen_tps": 18.678057444303246
+ },
+ {
+  "label": "close",
+  "prompt_tokens": 2441,
+  "gen_tokens": 658,
+  "seconds": 42.66023802757263,
+  "finish": "stop",
+  "prompt_tps": 272.56835023357985,
+  "gen_tps": 19.538948929675804
+ }
+]

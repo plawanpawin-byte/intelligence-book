@@ -1,0 +1,38 @@
+[
+ {
+  "label": "facts 1/1",
+  "prompt_tokens": 2377,
+  "gen_tokens": 553,
+  "seconds": 34.72552990913391,
+  "finish": "stop",
+  "prompt_tps": 204.73191777466144,
+  "gen_tps": 23.950206524514822
+ },
+ {
+  "label": "write 1/1",
+  "prompt_tokens": 1592,
+  "gen_tokens": 671,
+  "seconds": 32.15824890136719,
+  "finish": "stop",
+  "prompt_tps": 305.1630150597667,
+  "gen_tps": 24.929902568091347
+ },
+ {
+  "label": "open",
+  "prompt_tokens": 677,
+  "gen_tokens": 280,
+  "seconds": 12.742251873016357,
+  "finish": "stop",
+  "prompt_tps": 275.8021640555692,
+  "gen_tps": 27.294784872524716
+ },
+ {
+  "label": "close",
+  "prompt_tokens": 694,
+  "gen_tokens": 434,
+  "seconds": 18.579122304916382,
+  "finish": "stop",
+  "prompt_tps": 307.3412033091103,
+  "gen_tps": 26.63548242156332
+ }
+]
