@@ -39,10 +39,13 @@ class MLXBackend:
         return len(self.tokenizer.encode(text))
 
     def chat(self, system, user, max_tokens, temperature=0.4, top_p=0.9, rep_penalty=1.1, rep_ctx=96,
-             guard=None, label=""):
+             guard=None, label="", history=()):
         from mlx_lm import stream_generate
         from mlx_lm.sample_utils import make_sampler, make_logits_processors
-        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        msgs = [{"role": "system", "content": system}]
+        for u, a in history:
+            msgs += [{"role": "user", "content": u}, {"role": "assistant", "content": a}]
+        msgs.append({"role": "user", "content": user})
         prompt = self.tokenizer.apply_chat_template(msgs, add_generation_prompt=True)
         sampler = make_sampler(temp=temperature, top_p=top_p)
         procs = make_logits_processors(repetition_penalty=rep_penalty, repetition_context_size=rep_ctx) \
@@ -94,10 +97,13 @@ class LlamaCppBackend:
         return len(self._post("/tokenize", {"content": text})["tokens"])
 
     def chat(self, system, user, max_tokens, temperature=0.4, top_p=0.9, rep_penalty=1.1, rep_ctx=96,
-             guard=None, label=""):
+             guard=None, label="", history=()):
         t0 = time.time()
+        hist = []
+        for u, a in history:
+            hist += [{"role": "user", "content": u}, {"role": "assistant", "content": a}]
         out = self._post("/v1/chat/completions", {
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "messages": [{"role": "system", "content": system}] + hist + [{"role": "user", "content": user}],
             "max_tokens": max_tokens, "temperature": temperature, "top_p": top_p,
             "repeat_penalty": rep_penalty, "repeat_last_n": rep_ctx,
         })

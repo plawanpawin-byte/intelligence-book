@@ -673,3 +673,223 @@ def run_v2(llm, sources, style="summary", language="auto", cfg=None, log=print):
         opening = "# " + first_heading(sections[0]) + "\n\n" + opening
     closing = chat(v2_frame_close_prompt(outline, style), 900, "close") if style != "outline" or True else ""
     return dedupe("\n\n".join([opening] + sections + [closing]))
+
+
+# ----------------------------------------------------------------------------- v3 (facts → explain → frame, few-shot as chat turns)
+#
+# Run 3 (v2) lessons: an inline example leaks into the note; the writer copies raw speech when it sees it;
+# the most accurate thing a 3B model does is extracting short written facts (v0 key points were correct).
+# v3: 1) every chunk → written study FACTS (few-shot turn, low temperature)
+#     2) facts (never raw text) → explained SECTIONS (few-shot turn)
+#     3) opening (title, hook, overview) from the sections; ending (takeaways, questions) from the facts.
+
+EX_TH_SPEECH = ("โอเค เอ่อ วันนี้นะครับเรื่องภูเขาไฟ ภูเขาไฟเนี่ยมันเกิดจากแมกม่า magma ก็คือหินที่มันหลอมละลายอยู่ใต้เปลือกโลก "
+                "มันร้อนมาก ประมาณพันองศา แล้วมันเบากว่าหินรอบๆ ก็เลยดันขึ้นมาตามรอยแตก พอออกมาข้างนอกแล้วเราเรียกว่าลาวา lava นะ "
+                "จำไว้ ข้อสอบชอบถาม แมกม่าอยู่ข้างใน ลาวาอยู่ข้างนอก อ่ะ ทีนี้ภูเขาไฟมีกี่แบบ มีสองแบบหลักๆ "
+                "แบบแรกภูเขาไฟรูปโล่ shield volcano ลาวาเหลว ไหลไปไกล ไม่ค่อยระเบิด อย่างฮาวาย แบบที่สองภูเขาไฟสลับชั้น "
+                "stratovolcano ลาวาหนืด แก๊สออกไม่ได้ ก็สะสมแรงดันแล้วระเบิดรุนแรง อย่างฟูจิ เอ่อ ภูเขาไฟปินาตูโบปีเก้าหนึ่ง "
+                "ระเบิดแล้วเถ้าไปบังแดด โลกเย็นลงประมาณครึ่งองศาเกือบสองปี เดี๋ยวสัปดาห์หน้าควิซนะ")
+EX_TH_FACTS = """TOPIC: ภูเขาไฟเกิดขึ้นอย่างไรและมีกี่แบบ
+- ภูเขาไฟเกิดจาก **แมกมา (magma)** คือหินหลอมเหลวใต้เปลือกโลกที่ร้อนประมาณ 1,000 °C และเบากว่าหินรอบข้าง จึงดันตัวขึ้นมาตามรอยแตกของเปลือกโลก
+- เมื่อแมกมาออกมาสู่ผิวโลกจะเรียกว่า **ลาวา (lava)** — แมกมาอยู่ใต้ผิวโลก ลาวาอยู่บนผิวโลก (อาจารย์บอกว่าออกข้อสอบบ่อย)
+- ภูเขาไฟมี 2 แบบหลัก แบ่งตามความหนืดของลาวา
+- **ภูเขาไฟรูปโล่ (shield volcano)**: ลาวาเหลว ไหลไปได้ไกล จึงไม่ค่อยระเบิด เช่น ภูเขาไฟในฮาวาย
+- **ภูเขาไฟสลับชั้น (stratovolcano)**: ลาวาหนืดจนแก๊สออกไม่ได้ แรงดันจึงสะสมจนระเบิดรุนแรง เช่น ภูเขาไฟฟูจิ
+- ตัวอย่างผลกระทบ: ภูเขาไฟปินาตูโบระเบิดในปี 1991 เถ้าถ่านบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี
+- งานที่ต้องทำ: มีควิซสัปดาห์หน้า"""
+EX_TH_SECTION = """## ภูเขาไฟ: ทำไมบางลูกไหลเอื่อย แต่บางลูกระเบิดรุนแรง
+
+ภูเขาไฟเริ่มต้นจาก **แมกมา (magma)** หินหลอมเหลวที่ร้อนราว 1,000 °C ใต้เปลือกโลก เพราะแมกมาเบากว่าหินรอบข้าง มันจึงค่อยๆ ดันตัวขึ้นมาตามรอยแตก และเมื่อพ้นผิวโลกออกมาเราจะเรียกมันว่า **ลาวา (lava)**
+
+> [!tip] จำให้แม่น (ออกสอบบ่อย)
+> **แมกมา** = อยู่ใต้ผิวโลก · **ลาวา** = ออกมาอยู่บนผิวโลกแล้ว
+
+### สองแบบหลัก แบ่งตามความหนืดของลาวา
+สิ่งที่ตัดสินว่าภูเขาไฟจะ "ไหล" หรือ "ระเบิด" คือ ==ความหนืดของลาวา== ยิ่งลาวาหนืด แก๊สยิ่งหนีออกไม่ได้ แรงดันจึงสะสมจนปะทุอย่างรุนแรง
+
+| แบบ | ลาวา | การปะทุ | ตัวอย่าง |
+|---|---|---|---|
+| ภูเขาไฟรูปโล่ (shield volcano) | เหลว ไหลไปไกล | ไม่ค่อยระเบิด | ฮาวาย |
+| ภูเขาไฟสลับชั้น (stratovolcano) | หนืด แก๊สออกไม่ได้ | ระเบิดรุนแรง | ฟูจิ |
+
+> [!example] ภูเขาไฟเปลี่ยนอุณหภูมิโลกได้
+> การระเบิดของภูเขาไฟปินาตูโบในปี 1991 ส่งเถ้าถ่านขึ้นไปบังแสงอาทิตย์ ทำให้โลกเย็นลงประมาณ 0.5 °C นานเกือบ 2 ปี
+
+- [ ] เตรียมตัวควิซสัปดาห์หน้า"""
+
+EX_EN_SPEECH = ("ok so uh today volcanoes. a volcano starts with magma, that's melted rock under the crust, it's like a thousand "
+                "degrees and lighter than the rock around it so it pushes up through cracks. once it comes out we call it lava, "
+                "remember that, magma inside, lava outside, it's on every exam. there are two main types. shield volcanoes, runny "
+                "lava, flows far, doesn't really explode, like hawaii. and stratovolcanoes, thick lava, the gas can't escape so "
+                "pressure builds and boom, like fuji. pinatubo in ninety one, the ash blocked sunlight and the earth cooled about "
+                "half a degree for almost two years. quiz next week")
+EX_EN_FACTS = """TOPIC: How volcanoes form and their two main types
+- A volcano starts with **magma**: molten rock under the Earth's crust, about 1,000 °C and lighter than the surrounding rock, so it rises through cracks.
+- Once magma reaches the surface it is called **lava** — magma is underground, lava is on the surface (a frequent exam question).
+- There are 2 main types, depending on how thick (viscous) the lava is.
+- **Shield volcano**: runny lava that flows far, so it rarely explodes — e.g. Hawaii.
+- **Stratovolcano**: thick lava traps gas, pressure builds up and it erupts violently — e.g. Mount Fuji.
+- Example of impact: Pinatubo's 1991 eruption blocked sunlight with ash and cooled the Earth by about 0.5 °C for almost 2 years.
+- To do: quiz next week."""
+EX_EN_SECTION = """## Volcanoes: why some ooze and others explode
+
+Every volcano starts with **magma**, molten rock at about 1,000 °C beneath the crust. Because it is lighter than the rock around it, magma rises through cracks — and once it reaches the surface it is called **lava**.
+
+> [!tip] Remember (frequent exam question)
+> **Magma** = below the surface · **Lava** = on the surface
+
+### Two main types, decided by the lava's thickness
+Whether a volcano flows or explodes depends on ==how viscous its lava is==: thick lava traps gas, so pressure builds until it erupts violently.
+
+| Type | Lava | Eruption | Example |
+|---|---|---|---|
+| Shield volcano | runny, flows far | rarely explosive | Hawaii |
+| Stratovolcano | thick, traps gas | violent | Mount Fuji |
+
+> [!example] A volcano can cool the planet
+> Pinatubo's 1991 eruption sent ash high enough to block sunlight, cooling the Earth by about 0.5 °C for almost 2 years.
+
+- [ ] Prepare for next week's quiz"""
+
+
+def v3_facts_system(lang, spoken):
+    lang_rule = "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses." if lang == "thai" else "Write in English."
+    speech = (" The material is a speech-recognition transcript: ignore filler words, greetings and classroom chit-chat, "
+              "fix clearly misheard words, and write numbers as digits.") if spoken else ""
+    return (f"You turn material into accurate study facts. {lang_rule}{speech}\n"
+            "Output a line \"TOPIC: \" with the topic, then bullets. Each bullet is one complete, clear written sentence "
+            "with one fact, definition, cause→effect, step, example (with its numbers), name, exam hint or to-do. "
+            "Cover everything important, in order. Keep cause and effect in the right direction. "
+            "Only facts that are in the material — never add your own.")
+
+
+def v3_write_system(lang):
+    lang_rule = "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses." if lang == "thai" else "Write in English."
+    return (f"You are an expert teacher who turns study facts into a beautiful, easy-to-understand note section. {lang_rule}\n"
+            "Explain the facts so they connect into an understandable story: what each idea is, why it happens, how it works. "
+            "Use every fact given and keep all numbers, names and examples, but do not add facts that are not given. "
+            "Format: \"## \" heading that names the idea in an interesting way; short paragraphs; **bold** key terms; "
+            "==highlight== the most important phrase; > [!definition] Term, > [!example] Title, > [!tip] Title, "
+            "> [!warning] Title callouts; a table when comparing; \"- [ ] \" for to-dos. Output only the section.")
+
+
+def split_facts(text):
+    topic, bullets = "", []
+    for line in text.split("\n"):
+        t = line.strip()
+        if t.upper().startswith("TOPIC:"):
+            topic = topic or t[6:].strip()
+        elif t.startswith(("- ", "* ", "• ")) and len(t) > 6:
+            bullets.append("- " + t[2:].strip())
+    return topic, bullets
+
+
+def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    cfg = cfg or {}
+    chunk_chars = cfg.get("v3_chunk_chars", 3500)
+    group_chars = cfg.get("v3_group_chars", 2200)
+    rp = cfg.get("rep_penalty", 1.1)
+    kinds = {s["kind"] for s in sources}
+    spoken = bool(kinds & {"audio", "recording"})
+    texts = []
+    for s in sources:
+        t = clean_source(s["kind"], s["text"])
+        if s["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        texts.append(t)
+    corpus = "\n\n".join(texts)
+    lang = language if language != "auto" else ("thai" if is_thai(corpus) else "english")
+    th = lang == "thai"
+    ex_src, ex_facts, ex_sec = (EX_TH_SPEECH, EX_TH_FACTS, EX_TH_SECTION) if th else (EX_EN_SPEECH, EX_EN_FACTS, EX_EN_SECTION)
+
+    def facts_of(text, label):
+        out, _ = llm.chat(v3_facts_system(lang, spoken), f"<material>\n{text}\n</material>", 700, temperature=0.2,
+                          rep_penalty=rp, guard=is_looping, label=label,
+                          history=[(f"<material>\n{ex_src}\n</material>", ex_facts)])
+        return split_facts(dedupe(out))
+
+    def write_section(topic, bullets, label, extra=""):
+        facts = (f"TOPIC: {topic}\n" if topic else "") + "\n".join(bullets)
+        out, _ = llm.chat(v3_write_system(lang) + extra, f"<facts>\n{facts}\n</facts>", 1000, temperature=0.3,
+                          rep_penalty=rp, guard=is_looping, label=label,
+                          history=[(f"<facts>\n{ex_facts}\n</facts>", ex_sec)])
+        s = dedupe(strip_fences(out))
+        s = re.sub(r"^# ", "## ", s, flags=re.M)
+        if not s.lstrip().startswith("## "):
+            s = f"## {topic or 'Notes'}\n\n{s}"
+        return s
+
+    # 1. facts per chunk
+    chunks = []
+    for t in texts:
+        chunks += split(t, chunk_chars)
+    groups = []  # (topic, bullets)
+    seen = set()
+    for i, c in enumerate(chunks):
+        topic, bullets = facts_of(c, f"facts {i+1}/{len(chunks)}")
+        fresh = []
+        for b in bullets:
+            k = key(b)
+            if k and k not in seen:
+                seen.add(k)
+                fresh.append(b)
+        if fresh:
+            groups.append((topic, fresh))
+
+    all_facts = [b for _, bs in groups for b in bs]
+    if not all_facts:
+        return "# Note\n\n" + corpus[:2000]
+
+    # Short material: a single section is the whole body.
+    # 2. merge neighbouring fact groups up to group_chars, then write one section per group
+    units = []
+    for topic, bs in groups:
+        if units and sum(len(x) for x in units[-1][1]) + sum(len(x) for x in bs) <= group_chars:
+            units[-1][1].extend(bs)
+        else:
+            units.append([topic, list(bs)])
+    sections = [write_section(t, bs, f"write {i+1}/{len(units)}") for i, (t, bs) in enumerate(units)]
+    sections = merge_sections(sections)
+
+    # 3. frame
+    outline = outline_of(sections, per_section=max(200, 5000 // max(1, len(sections))))
+    frame_sys = ("You write the opening of study notes. " + ("Write in Thai (ภาษาไทย)." if th else "Write in English.") +
+                 " Use only what is in the outline. Never mention 'the outline', 'the transcript' or 'the speaker'.")
+    opening, _ = llm.chat(frame_sys, f"""<outline>
+{outline}
+</outline>
+
+Write the opening of this note, exactly in this form:
+# <specific, informative title>
+
+<hook: 2–3 sentences that make people want to read on — start with the most surprising fact or striking number from the outline, or the question this note answers; end with what the reader will understand>
+
+> [!summary] {'ภาพรวม' if th else 'Overview'}
+> <3–5 sentences that connect all the main ideas into one story>""", 450, temperature=0.4, rep_penalty=rp, guard=is_looping, label="open")
+    opening = dedupe(strip_fences(opening))
+    if not opening.lstrip().startswith("# "):
+        opening = "# " + first_heading(sections[0]) + "\n\n" + opening
+
+    facts_text = "\n".join(all_facts)
+    if len(facts_text) > 5000:
+        step = len(all_facts) / (5000 / (len(facts_text) / len(all_facts)))
+        facts_text = "\n".join(all_facts[int(i * step)] for i in range(int(len(all_facts) / step)))
+    nq = {"summary": 4, "studyGuide": 6, "outline": 3, "questions": 8}[style]
+    h_take, h_q, h_ans = ("ประเด็นสำคัญ", "คำถามทบทวน", "คำตอบ") if th else ("Key takeaways", "Review questions", "Answer")
+    ending, _ = llm.chat(("You write the end of study notes. " + ("Write in Thai (ภาษาไทย)." if th else "Write in English.") +
+                          " Use only the given facts."), f"""<facts>
+{facts_text}
+</facts>
+
+Write exactly:
+## {h_take}
+- <one full sentence with the most important insight; its key phrase in ==highlight==>
+(5 bullets in total, the most important ideas, not details)
+
+## {h_q}
+> [!question] <a question that checks understanding (why/how), not just a word>
+> **{h_ans}:** <a complete 1–2 sentence answer from the facts>
+
+({nq} questions in total, same format)""", 1000, temperature=0.3, rep_penalty=rp, guard=is_looping, label="close")
+    ending = dedupe(strip_fences(ending))
+    return dedupe("\n\n".join([opening] + sections + [ending]))
