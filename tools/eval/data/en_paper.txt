@@ -1,0 +1,164 @@
+[Page 1]
+Foundations of Machine Learning                                Chapter 9
+9 Attention and the Transformer
+9.1 Why attention?
+Before 2017, most models for sequence tasks such as machine translation
+were built from recurrent neural networks (RNNs). An RNN reads a sentence
+one token at a time and compresses everything it has seen into a fixed-
+size hidden state vector h_t = f(h_{t-1}, x_t). This design has two well-
+known weaknesses. First, computation is inherently sequential: step t
+cannot begin until step t-1 has finished, so training cannot be
+parallelised across positions of a sequence. Second, information about
+early tokens must survive many repeated applications of f before it can
+influence a late prediction. In practice gradients shrink or explode
+along this path, and long-range dependencies (for example, agreement
+between a subject and a verb twenty words later) are learned poorly.
+The attention mechanism was first introduced as an add-on to recurrent
+encoder-decoder models (Bahdanau et al., 2015). Instead of forcing the
+decoder to rely on a single summary vector, attention lets it look back
+at every encoder state and decide, for each output step, which input
+positions are relevant. The Transformer (Vaswani et al., 2017) took this
+idea to its logical conclusion: it removed recurrence entirely and built
+the whole network out of attention and simple feed-forward layers. The
+paper's title, "Attention Is All You Need", summarises the claim.
+9.2 Attention as a soft dictionary lookup
+A useful mental model is a dictionary (key-value store). In an ordinary
+dictionary a query either matches a key exactly or it does not, and we
+return the corresponding value. Attention relaxes this: the query is
+compared with every key, each comparison produces a similarity score,
+the scores are turned into weights that sum to one, and the output is
+the weighted average of all the values. Nothing is ever retrieved
+"exactly"; instead every value contributes in proportion to how well
+its key matches the query.
+Concretely, each token in the input is represented by a vector x_i of
+dimension d_model. Three learned linear maps produce, for every token,
+a query q_i = x_i W^Q, a key k_i = x_i W^K and a value v_i = x_i W^V.
+Stacking the rows for all n tokens gives matrices Q, K (each n x d_k)
+and V (n x d_v).
+Introduction to Deep Learning, 3rd ed.                               241
+[Page 2]
+Foundations of Machine Learning                                Chapter 9
+9.3 Scaled dot-product attention
+The Transformer uses the dot product as its similarity function. The
+complete operation is written
+    Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V        (9.1)
+Reading equation (9.1) from the inside out: the product Q K^T is an
+n x n matrix whose entry (i, j) measures how strongly token i attends
+to token j. The softmax is applied row by row, so each row becomes a
+probability distribution over the n positions. Multiplying by V then
+mixes the value vectors according to those probabilities.
+Why divide by sqrt(d_k)? If the components of q and k are independent
+with mean 0 and variance 1, their dot product has mean 0 and variance
+d_k. For d_k = 64 the scores would typically have a standard deviation
+of 8, which pushes the softmax into a regime where one weight is close
+to 1 and the rest are close to 0. In that saturated regime the gradients
+are tiny and learning stalls. Dividing by sqrt(d_k) restores unit vari-
+ance and keeps the softmax in a well-behaved range.
+Worked example. Suppose a sequence has three tokens and d_k = 4. For the
+first token, the raw scores against the three keys are (8, 4, 0).
+After scaling by 1/sqrt(4) = 0.5 they become (4, 2, 0). Applying the
+softmax gives weights of approximately (0.87, 0.12, 0.02). The output
+for token 1 is therefore 0.87 v_1 + 0.12 v_2 + 0.02 v_3: mostly its own
+value, with a small contribution from token 2. Without the scaling the
+weights would be about (0.98, 0.02, 0.00), a much "harder" choice.
+Self-attention versus cross-attention. When Q, K and V are all computed
+from the same sequence the operation is called self-attention: every
+token builds a new representation of itself by gathering information
+from the other tokens in the same sentence. In an encoder-decoder model
+the decoder also uses cross-attention, in which the queries come from
+the decoder while the keys and values come from the encoder output.
+This is how a translation model consults the source sentence.
+Masking. A language model that predicts the next token must not be
+allowed to look at the future. This is enforced with a causal mask:
+before the softmax, every score (i, j) with j > i is set to minus
+infinity, so the corresponding weight becomes exactly zero. The same
+mechanism is used to ignore padding tokens in a batch.
+Introduction to Deep Learning, 3rd ed.                               242
+[Page 3]
+Foundations of Machine Learning                                Chapter 9
+9.4 Multi-head attention
+A single attention operation produces one weighted average per token,
+which limits it to one "kind" of relationship at a time. Multi-head
+attention runs h attention operations in parallel, each with its own
+projection matrices W_i^Q, W_i^K, W_i^V that map into a smaller sub-
+space. The h outputs are concatenated and passed through a final linear
+map W^O:
+    MultiHead(Q, K, V) = Concat(head_1, ..., head_h) W^O
+    head_i = Attention(Q W_i^Q, K W_i^K, V W_i^V)               (9.2)
+In the original base model, d_model = 512 and h = 8 heads, so each head
+works with d_k = d_v = 512 / 8 = 64 dimensions. Because the heads are
+smaller, the total cost is similar to a single full-width head. Empi-
+rically, different heads learn to specialise: some track the previous
+token, some link pronouns to the nouns they refer to, others follow
+syntactic relations. These interpretations should be treated with
+caution, however; heads are not guaranteed to have a clean meaning.
+9.5 Positional information
+Attention by itself is permutation-invariant: if we shuffle the input
+tokens, each output is shuffled in the same way but otherwise unchanged.
+The model therefore has no idea of word order unless we supply it. The
+original Transformer adds a positional encoding vector to each input
+embedding, built from sine and cosine functions of different
+frequencies:
+    PE(pos, 2i)   = sin( pos / 10000^(2i/d_model) )
+    PE(pos, 2i+1) = cos( pos / 10000^(2i/d_model) )            (9.3)
+Low dimensions oscillate quickly and high dimensions slowly, so every
+position receives a distinct pattern, and the encoding of pos + k can
+be expressed as a linear function of the encoding of pos. Many later
+models instead learn the position embeddings directly, or use relative
+schemes such as rotary position embeddings (RoPE), which rotate query
+and key vectors by an angle proportional to their position so that
+the dot product depends only on the distance between tokens.
+9.6 The Transformer block
+A Transformer layer combines two sub-layers. The first is multi-head
+self-attention; the second is a position-wise feed-forward network
+(FFN) applied independently to every token:
+    FFN(x) = max(0, x W_1 + b_1) W_2 + b_2                      (9.4)
+Introduction to Deep Learning, 3rd ed.                               243
+[Page 4]
+Foundations of Machine Learning                                Chapter 9
+The inner dimension of the FFN is usually four times d_model (2048 in
+the base model). A helpful way to see the division of labour is that
+attention moves information between positions, while the FFN processes
+the information at each position.
+Each sub-layer is wrapped in a residual connection followed by layer
+normalisation: the output is LayerNorm(x + Sublayer(x)). Residual paths
+let gradients flow directly through dozens of layers, and normalisation
+keeps activations in a stable range. Most modern implementations move
+the normalisation before the sub-layer ("pre-norm"), which makes very
+deep stacks easier to train. The base model stacks N = 6 such layers
+in the encoder and 6 in the decoder; the decoder layers additionally
+contain a cross-attention sub-layer.
+Three families of models grew out of this design. Encoder-only models
+(e.g. BERT) see the whole input at once and are suited to classific-
+ation and retrieval. Decoder-only models (e.g. the GPT family) use the
+causal mask and are trained to predict the next token; almost all
+current large language models are of this type. Encoder-decoder models
+(e.g. T5) keep both halves and are natural for translation and summar-
+isation.
+9.7 Computational cost
+Self-attention compares every token with every other token, so its time
+and memory grow as O(n^2 d) for a sequence of length n. For n = 1,000
+the score matrix has one million entries per head; for n = 100,000 it
+would have ten billion. Recurrent layers, by contrast, cost O(n d^2) but
+must be computed sequentially. The quadratic cost is the main reason
+early Transformers were limited to contexts of 512 or 1,024 tokens, and
+it has motivated a large literature on efficient attention, including
+sparse patterns, low-rank approximations and memory-efficient exact
+kernels such as FlashAttention, which avoid materialising the full n x n
+matrix. During generation, decoder-only models also cache the keys and
+values of previous tokens (the "KV cache") so that each new token needs
+only one new row of attention scores.
+Summary
+- Attention computes a weighted average of value vectors, with weights
+  given by a softmax over query-key similarities.
+- Scaling by sqrt(d_k) prevents the softmax from saturating.
+- Multiple heads let the model attend to several relationships at once.
+- Positional encodings restore word-order information.
+- Each block = attention + FFN, with residual connections and LayerNorm.
+- The cost of full self-attention is quadratic in sequence length.
+Exercises
+9.1 Repeat the worked example of Section 9.3 with scores (6, 6, 0) and
+d_k = 9. Which tokens receive the largest weights?
+9.2 Explain in your own words why a model without positional encodings
+cannot distinguish "dog bites man" from "man bites dog".
+Introduction to Deep Learning, 3rd ed.                               244
