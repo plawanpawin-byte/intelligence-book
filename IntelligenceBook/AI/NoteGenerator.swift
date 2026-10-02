@@ -40,6 +40,8 @@ final class GenerationJob {
 
     var phase: Phase = .preparing
     var output: String = ""
+    /// Lower-cased source text, to tell example words that leaked in from words the sources really use.
+    private var sourceLower = ""
     var progress: Double = 0
     /// Estimated seconds left.
     var remaining: TimeInterval?
@@ -99,6 +101,7 @@ final class GenerationJob {
             // Numbers the sources actually mention. Facts or note lines with any other number are made up
             // (a 3B model "calculates" profits and paybacks wrongly) and are dropped.
             let sourceText = texts.joined(separator: "\n")
+            sourceLower = sourceText.lowercased()
             let allowed = Grounding.numbers(in: sourceText).union(Grounding.smallNumbers(in: sourceText))
             let note: String
             if corpus.count < NotePrompts.shortCharacters {
@@ -107,7 +110,8 @@ final class GenerationJob {
                 note = try await fullNote(texts, kit: kit, allowed: allowed)
             }
             let grounded = Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed)
-            output = MarkdownFixer.fix(MarkdownFixer.headingQuestions(MarkdownFixer.questionCallouts(grounded)), thai: thai)
+            let fixed = MarkdownFixer.fix(MarkdownFixer.headingQuestions(MarkdownFixer.questionCallouts(grounded)), thai: thai)
+            output = Examples.dropLeakedLines(fixed, source: sourceLower)
             progress = 1
             phase = .done
         } catch is CancellationError {
@@ -137,8 +141,14 @@ final class GenerationJob {
                 )
             }
         }
+        // Volcano words in a note about something else: the model mixed the example in. Write it again without it.
+        if !Examples.leakedWords(in: text, source: sourceLower).isEmpty {
+            text = try await llm.generate(
+                system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, onUpdate: onUpdate
+            )
+        }
         // Lines copied from any worked example (e.g. a volcano table row in an economics note) are dropped.
-        return FactList.removeExampleLines(text, examples: Examples.all)
+        return Examples.dropLeakedLines(FactList.removeExampleLines(text, examples: Examples.all), source: sourceLower)
     }
 
     // MARK: Short material: facts → one compact section, no padding.
@@ -442,6 +452,20 @@ struct NotePrompts {
 // MARK: - Worked examples (shown to the model as earlier chat turns)
 
 enum Examples {
+    /// Words that only the worked examples use.
+    static let ownWords = ["ภูเขาไฟ", "ลาวา", "แมกมา", "ปินาตูโบ", "ฟูจิ", "ฮาวาย", "volcano", "lava", "magma", "pinatubo", "fuji", "hawaii"]
+
+    static func leakedWords(in text: String, source: String) -> [String] {
+        let lower = text.lowercased()
+        return ownWords.filter { lower.contains($0) && !source.contains($0) }
+    }
+
+    static func dropLeakedLines(_ text: String, source: String) -> String {
+        text.components(separatedBy: "\n").filter { line in
+            line.hasPrefix("#") || leakedWords(in: line, source: source).isEmpty
+        }.joined(separator: "\n")
+    }
+
     static var all: [String] {
         [thaiSpeech, thaiFacts, thaiSection, thaiOpening, englishSpeech, englishFacts, englishSection, englishOpening]
     }
