@@ -429,8 +429,9 @@ PARTICLE_SUFFIX = re.compile(r"(?:นะครับ|นะคะ|ครับ|�
 
 
 def preclean_speech(text):
-    """Removes timestamps, filler words and polite particles from a speech transcript."""
-    text = TIMESTAMP.sub("", text)
+    """Removes timestamps, filler words and polite particles from a speech transcript; Thai numbers → digits."""
+    import thainum
+    text = thainum.convert(TIMESTAMP.sub("", text))
     out_lines = []
     for line in text.split("\n"):
         tokens = []
@@ -755,11 +756,12 @@ Whether a volcano flows or explodes depends on ==how viscous its lava is==: thic
 def v3_facts_system(lang, spoken):
     lang_rule = "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses." if lang == "thai" else "Write in English."
     speech = (" The material is a speech-recognition transcript: ignore filler words, greetings and classroom chit-chat, "
-              "fix clearly misheard words, and write numbers as digits.") if spoken else ""
+              "and fix clearly misheard words.") if spoken else ""
     return (f"You turn material into accurate study facts. {lang_rule}{speech}\n"
             "Output a line \"TOPIC: \" with the topic, then bullets. Each bullet is one complete, clear written sentence "
             "with one fact, definition, cause→effect, step, example (with its numbers), name, exam hint or to-do. "
             "Cover everything important, in order. Keep cause and effect in the right direction. "
+            "Copy every number exactly as written in the material and never calculate new numbers. "
             "Only facts that are in the material — never add your own.")
 
 
@@ -767,7 +769,8 @@ def v3_write_system(lang):
     lang_rule = "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses." if lang == "thai" else "Write in English."
     return (f"You are an expert teacher who turns study facts into a beautiful, easy-to-understand note section. {lang_rule}\n"
             "Explain the facts so they connect into an understandable story: what each idea is, why it happens, how it works. "
-            "Use every fact given and keep all numbers, names and examples, but do not add facts that are not given. "
+            "Use every fact given and keep all numbers, names and examples exactly, but never add a fact, number or "
+            "example that is not given and never calculate new numbers. Make a table only when the facts give every value in it. "
             "Format: \"## \" heading that names the idea in an interesting way; short paragraphs; **bold** key terms; "
             "==highlight== the most important phrase; > [!definition] Term, > [!example] Title, > [!tip] Title, "
             "> [!warning] Title callouts; a table when comparing; \"- [ ] \" for to-dos. Output only the section.")
@@ -784,19 +787,21 @@ def split_facts(text):
     return topic, bullets
 
 
-def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print):
+def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print, _texts=None):
     cfg = cfg or {}
     chunk_chars = cfg.get("v3_chunk_chars", 3500)
     group_chars = cfg.get("v3_group_chars", 2200)
     rp = cfg.get("rep_penalty", 1.1)
     kinds = {s["kind"] for s in sources}
     spoken = bool(kinds & {"audio", "recording"})
-    texts = []
-    for s in sources:
-        t = clean_source(s["kind"], s["text"])
-        if s["kind"] in ("audio", "recording"):
-            t = preclean_speech(t)
-        texts.append(t)
+    texts = _texts
+    if texts is None:
+        texts = []
+        for s in sources:
+            t = clean_source(s["kind"], s["text"])
+            if s["kind"] in ("audio", "recording"):
+                t = preclean_speech(t)
+            texts.append(t)
     corpus = "\n\n".join(texts)
     lang = language if language != "auto" else ("thai" if is_thai(corpus) else "english")
     th = lang == "thai"
@@ -855,7 +860,29 @@ def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print):
     outline = outline_of(sections, per_section=max(200, 5000 // max(1, len(sections))))
     frame_sys = ("You write the opening of study notes. " + ("Write in Thai (ภาษาไทย)." if th else "Write in English.") +
                  " Use only what is in the outline. Never mention 'the outline', 'the transcript' or 'the speaker'.")
-    opening, _ = llm.chat(frame_sys, f"""<outline>
+    ex_outline = outline_of([ex_sec], 500)
+    ex_open = ("""# ภูเขาไฟ: ทำไมบางลูกไหลเอื่อย แต่บางลูกระเบิดจนโลกเย็นลง
+
+รู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5 °C นานเกือบ 2 ปี? ความรุนแรงขนาดนั้นไม่ได้เกิดกับภูเขาไฟทุกลูก — \
+บางลูกแค่มีลาวาไหลเอื่อยๆ โน้ตนี้จะพาไปเข้าใจว่าอะไรเป็นตัวตัดสิน
+
+> [!summary] ภาพรวม
+> ภูเขาไฟเกิดจากแมกมาที่ร้อนราว 1,000 °C ดันตัวขึ้นมาตามรอยแตกของเปลือกโลก และเรียกว่าลาวาเมื่อออกมาถึงผิวโลก \
+ความหนืดของลาวาเป็นตัวแบ่งภูเขาไฟเป็น 2 แบบ: ภูเขาไฟรูปโล่ที่ลาวาเหลวและไม่ค่อยระเบิด กับภูเขาไฟสลับชั้นที่ลาวาหนืดจนแก๊สสะสมแรงดันและระเบิดรุนแรง \
+การระเบิดครั้งใหญ่ส่งผลไปไกลถึงอุณหภูมิของทั้งโลก""" if th else """# Volcanoes: why some ooze while others explode hard enough to cool the planet
+
+One volcanic eruption cooled the whole Earth by about 0.5 °C for almost two years. Yet most volcanoes never do anything like that — \
+some just let lava ooze out. This note explains what makes the difference.
+
+> [!summary] Overview
+> Volcanoes start with magma at about 1,000 °C rising through cracks in the crust; at the surface it is called lava. \
+The lava's viscosity splits volcanoes into two types: shield volcanoes with runny lava that rarely explode, and stratovolcanoes \
+whose thick lava traps gas until they erupt violently. Large eruptions can even change the global temperature.""")
+    open_task = "Write the opening of this note: a \"# \" title, a hook paragraph that makes people want to read on (start from the most surprising fact or number), and a > [!summary] overview that connects all the main ideas."
+    opening, _ = llm.chat(frame_sys, f"<outline>\n{outline}\n</outline>\n\n{open_task}", 450, temperature=0.4,
+                          rep_penalty=rp, guard=is_looping, label="open",
+                          history=[(f"<outline>\n{ex_outline}\n</outline>\n\n{open_task}", ex_open)])
+    _unused = (frame_sys, f"""<outline>
 {outline}
 </outline>
 
@@ -865,7 +892,7 @@ Write the opening of this note, exactly in this form:
 <hook: 2–3 sentences that make people want to read on — start with the most surprising fact or striking number from the outline, or the question this note answers; end with what the reader will understand>
 
 > [!summary] {'ภาพรวม' if th else 'Overview'}
-> <3–5 sentences that connect all the main ideas into one story>""", 450, temperature=0.4, rep_penalty=rp, guard=is_looping, label="open")
+> <3–5 sentences that connect all the main ideas into one story>""")
     opening = dedupe(strip_fences(opening))
     if not opening.lstrip().startswith("# "):
         opening = "# " + first_heading(sections[0]) + "\n\n" + opening
@@ -893,3 +920,69 @@ Write exactly:
 ({nq} questions in total, same format)""", 1000, temperature=0.3, rep_penalty=rp, guard=is_looping, label="close")
     ending = dedupe(strip_fences(ending))
     return dedupe("\n\n".join([opening] + sections + [ending]))
+
+
+CALLOUT_ANSWER = re.compile(r"^(\*\*(?:Answer|คำตอบ)\s*[:：]\*\*.*)$", re.M)
+
+
+def normalize_markdown(text, th):
+    """Fixes the small format slips of a 3B model so the app renders callouts properly."""
+    lines = text.split("\n")
+    out = []
+    for i, line in enumerate(lines):
+        t = line.strip()
+        # "* [!question] …" / "- [!question] …" / "[!tip] …" → "> [!question] …"
+        m = re.match(r"^(?:[*\-•]\s*|>?\s*)\[!(\w+)\]\s*(.*)$", t)
+        if m and not t.startswith("> [!"):
+            line = f"> [!{m.group(1)}] {m.group(2)}".rstrip()
+            t = line
+        # "> [!summary]" without a title
+        if re.fullmatch(r">\s*\[!summary\]\s*", t):
+            line = "> [!summary] " + ("ภาพรวม" if th else "Overview")
+        # an answer line directly under a callout belongs inside it
+        if re.match(r"^\*\*(?:Answer|คำตอบ)\s*[:：]\*\*", t) and out and out[-1].lstrip().startswith(">"):
+            line = "> " + t
+        # "### ## Heading" → "## Heading"
+        line = re.sub(r"^#{2,}\s+(#{2,}\s+)", r"\1", line)
+        out.append(line)
+    text = "\n".join(out)
+    # a blank line before every callout header so callouts don't merge
+    text = re.sub(r"([^\n])\n(> \[!)", r"\1\n\n\2", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+V4_SHORT_RULE = (" The material is SHORT: write a compact section — one short paragraph that explains it, then bullets "
+                 "for the points (and \"- [ ] \" to-dos if any). No tables, no extra callouts, nothing that is not given.")
+
+
+def run_v4(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    """v3 + Thai number normalisation, strict numbers, short path, markdown fix-ups."""
+    cfg = cfg or {}
+    kinds = {s["kind"] for s in sources}
+    spoken = bool(kinds & {"audio", "recording"})
+    texts = []
+    for s in sources:
+        t = clean_source(s["kind"], s["text"])
+        if s["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        texts.append(t)
+    corpus = "\n\n".join(texts)
+    lang = language if language != "auto" else ("thai" if is_thai(corpus) else "english")
+    th = lang == "thai"
+    if len(corpus) < cfg.get("v4_short_chars", 1500):
+        ex_src, ex_facts, ex_sec = (EX_TH_SPEECH, EX_TH_FACTS, EX_TH_SECTION) if th else (EX_EN_SPEECH, EX_EN_FACTS, EX_EN_SECTION)
+        rp = cfg.get("rep_penalty", 1.1)
+        out, _ = llm.chat(v3_facts_system(lang, spoken), f"<material>\n{corpus}\n</material>", 500, temperature=0.2,
+                          rep_penalty=rp, guard=is_looping, label="facts",
+                          history=[(f"<material>\n{ex_src}\n</material>", ex_facts)])
+        topic, bullets = split_facts(dedupe(out))
+        facts = (f"TOPIC: {topic}\n" if topic else "") + "\n".join(bullets)
+        sec, _ = llm.chat(v3_write_system(lang) + V4_SHORT_RULE, f"<facts>\n{facts}\n</facts>", 600, temperature=0.3,
+                          rep_penalty=rp, guard=is_looping, label="write",
+                          history=[(f"<facts>\n{ex_facts}\n</facts>", ex_sec)])
+        sec = dedupe(strip_fences(sec))
+        sec = re.sub(r"^#{1,3} ", "# ", sec, count=1) if sec.lstrip().startswith("#") else f"# {topic or 'Note'}\n\n{sec}"
+        return normalize_markdown(sec, th)
+    cfg = dict(cfg)
+    note = run_v3(llm, sources, style, language, cfg, log, _texts=texts)
+    return normalize_markdown(note, th)

@@ -64,7 +64,7 @@ class MLXBackend:
                     finish = "loop"
                     break
         secs = time.time() - t0
-        self.stats.add(label=label, prompt_tokens=len(prompt), gen_tokens=n_gen, seconds=secs,
+        self.stats.add(label=label, output=text, prompt_tokens=len(prompt), gen_tokens=n_gen, seconds=secs,
                        finish=finish, prompt_tps=getattr(resp, "prompt_tps", 0),
                        gen_tps=getattr(resp, "generation_tps", 0))
         return text, finish == "length"
