@@ -14,8 +14,9 @@ UI เป็น SwiftUI แบบ Apple native (หน้าแรกเป็�
 | ลิงก์เว็บ | ดึง HTML แล้วตัดเหลือเนื้อหาหลัก (article/main) |
 | ข้อความ | วางได้เลย |
 | ไฟล์เสียง / อัดสด | AVAudioRecorder + Speech framework ถอดเสียงทีละ 50 วินาที (ยาวเท่าไหร่ก็ได้) |
-| AI | Llama 3.2 3B (4-bit) ผ่าน MLX Swift — ชื่อในแอป "Apple Foundation Models 3B" (เครื่องแรม < 5.5 GB ใช้ 1B) · กันตอบวนซ้ำ (repetition penalty + ตัดบรรทัดซ้ำ) · เนื้อหาสั้นได้โน้ตสั้น · Built with Llama |
-| เอกสารยาว | map → reduce: ย่อทีละช่วงให้พอดี context แล้วค่อยเขียนโน้ตฉบับเต็ม |
+| AI | Llama 3.2 3B (4-bit) ผ่าน MLX Swift ทุกเครื่อง — ชื่อในแอป "Apple Foundation Models 3B" · Built with Llama |
+| ระบบสรุป | ① ทำความสะอาดต้นฉบับ (ตัดคำเติม/เวลา, แปลงเลขไทยที่พูดเป็นตัวเลข) ② **เข้าใจ**: ทีละช่วง ~2,000 ตัวอักษร → ข้อเท็จจริงภาษาเขียน ③ **อธิบาย**: เขียนแต่ละหัวข้อจากข้อเท็จจริง (ไม่เห็นคำพูดดิบ จึงไม่ลอก) ④ **ประกอบ**: ชื่อเรื่อง + ย่อหน้าเปิดชวนอ่าน + ภาพรวม, ประเด็นสำคัญ + คำถามทบทวน ⑤ ตัวกรอง: ตัดบรรทัดที่มีตัวเลขที่ต้นฉบับไม่มี, ตัดส่วนที่ลอกจากตัวอย่าง, ซ่อม callout |
+| ทดสอบระบบสรุป | branch `eval`: `tools/eval` รัน pipeline เดียวกันด้วยโมเดลจริงบน Mac runner กับชุดตัวอย่าง (บรรยายไทย, พอดแคสต์, บทความ, PDF) — ผลอยู่ branch `eval-results` |
 | รูปแบบโน้ต | สรุปใจความ · คู่มืออ่านทบทวน · โครงร่าง · คำถามทบทวน |
 | แชร์ | Obsidian (`obsidian://new` + Markdown/callout), PDF สีสำหรับ Canva/Notes, Markdown, ข้อความ |
 
@@ -52,7 +53,7 @@ UI เป็น SwiftUI แบบ Apple native (หน้าแรกเป็�
 IntelligenceBook/
   App/         entry + TabView
   Models/      SwiftData: Notebook, Source, Note
-  AI/          DeviceProfile, LLMService (MLX + RepetitionGuard), NoteGenerator (prompt + map-reduce)
+  AI/          DeviceProfile, LLMService (MLX + RepetitionGuard), NoteGenerator (pipeline + prompts), NoteText (ตัวช่วยข้อความ), ThaiNumbers
   Ingestion/   PDF/OCR, เว็บ, Speech, SourceProcessor
   Recording/   อัดเสียง + เล่นเสียง
   Notes/       parser + ตัวเรนเดอร์สี/ไฮไลท์ + export (MD/PDF/ข้อความ/Obsidian)
