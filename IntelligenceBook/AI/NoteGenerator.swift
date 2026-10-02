@@ -102,7 +102,9 @@ final class GenerationJob {
             } else {
                 note = try await fullNote(texts, kit: kit)
             }
-            output = MarkdownFixer.fix(RepetitionGuard.clean(note), thai: thai)
+            // Lines or callouts that state a number the sources never mention are made up: drop them.
+            let allowed = Grounding.numbers(in: texts.joined(separator: "\n"))
+            output = MarkdownFixer.fix(Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed), thai: thai)
             progress = 1
             phase = .done
         } catch is CancellationError {
@@ -112,22 +114,37 @@ final class GenerationJob {
         }
     }
 
+    /// One model call with a worked example. When thin material makes the model hand back the example itself
+    /// (it happens with a 3B model), the call is repeated without the example.
+    private func ask(
+        system: String, prompt: String, maxTokens: Int, temperature: Float, example: FewShot,
+        onUpdate: @escaping (String) -> Void
+    ) async throws -> String {
+        let llm = LLMService.shared
+        let text = try await llm.generate(
+            system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, examples: [example], onUpdate: onUpdate
+        )
+        guard Grounding.overlap(text, with: example.assistant) > 0.2 else { return text }
+        return try await llm.generate(
+            system: system, prompt: prompt, maxTokens: maxTokens, temperature: temperature, onUpdate: onUpdate
+        )
+    }
+
     // MARK: Short material: facts → one compact section, no padding.
 
     private func shortNote(_ corpus: String, kit: NotePrompts) async throws -> String {
-        let llm = LLMService.shared
         phase = .reading(1, 1)
         progress = 0.1
-        let factsText = try await llm.generate(
+        let factsText = try await ask(
             system: kit.factsSystem, prompt: kit.factsPrompt(corpus), maxTokens: 500, temperature: 0.2,
-            examples: [kit.factsExample]
+            example: kit.factsExample
         ) { [weak self] partial in self?.output = partial }
         let facts = FactList.parse(factsText)
         phase = .writing(1, 1)
         progress = 0.5
-        var section = try await llm.generate(
+        var section = try await ask(
             system: kit.writeSystem(short: true), prompt: kit.writePrompt(facts.text), maxTokens: 600, temperature: 0.3,
-            examples: [kit.writeExample]
+            example: kit.writeExample
         ) { [weak self] partial in self?.output = partial }
         section = NoteCleaner.clean(section)
         if section.hasPrefix("#") {
@@ -171,9 +188,9 @@ final class GenerationJob {
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
             phase = .reading(index + 1, chunks.count)
-            let raw = try await llm.generate(
+            let raw = try await ask(
                 system: kit.factsSystem, prompt: kit.factsPrompt(chunk), maxTokens: 700, temperature: 0.2,
-                examples: [kit.factsExample]
+                example: kit.factsExample
             ) { [weak self] partial in self?.output = partial }
             tick()
             let parsed = FactList.parse(raw)
@@ -210,9 +227,9 @@ final class GenerationJob {
             phase = .writing(index + 1, units.count)
             let facts = (unit.topic.isEmpty ? "" : "TOPIC: \(unit.topic)\n") + unit.facts.joined(separator: "\n")
             let prefix = finished
-            var section = try await llm.generate(
+            var section = try await ask(
                 system: kit.writeSystem(short: false), prompt: kit.writePrompt(facts), maxTokens: 1000, temperature: 0.3,
-                examples: [kit.writeExample]
+                example: kit.writeExample
             ) { [weak self] partial in self?.output = prefix + partial }
             tick()
             section = SectionTools.normalize(NoteCleaner.clean(section), topic: unit.topic)
@@ -227,9 +244,9 @@ final class GenerationJob {
         phase = .framing
         let body = sections.joined(separator: "\n\n")
         let outline = SectionTools.outline(sections, perSection: max(200, 5000 / max(1, sections.count)))
-        var opening = try await llm.generate(
+        var opening = try await ask(
             system: kit.openSystem, prompt: kit.openPrompt(outline), maxTokens: 450, temperature: 0.4,
-            examples: [kit.openExample]
+            example: kit.openExample
         ) { [weak self] partial in self?.output = partial + "\n\n" + body }
         tick()
         opening = NoteCleaner.clean(opening)
@@ -474,297 +491,12 @@ enum Examples {
     """
 }
 
-// MARK: - Source clean-up
-
-enum SourceCleaner {
-    private static let timestamp = try! NSRegularExpression(pattern: "^\\[(?:\\d{1,2}:)?\\d{1,2}:\\d{2}\\]\\s*", options: .anchorsMatchLines)
-    private static let fillerTokens: Set<String> = [
-        "เอ่อ", "อ่ะ", "อะ", "อ้า", "อ๋อ", "เออ", "อืม", "อืมม", "แบบว่า", "ก็คือว่า", "คือว่า", "นะ", "นะครับ", "ครับ",
-        "ค่ะ", "คะ", "นะคะ", "จ้ะ", "จ้า", "โอเค", "โอเคนะครับ", "ใช่มั้ย", "ใช่ไหม", "เนอะ", "อ่า", "ใช่", "อ้าว", "เนี่ย",
-        "เนาะ", "แหละ", "uh", "um", "uhm", "erm", "like,", "okay", "okay,", "OK", "ok", "so,",
-    ]
-    private static let particleSuffixes = ["นะครับ", "นะคะ", "ครับ", "ค่ะ"]
-
+extension SourceCleaner {
     static func clean(_ text: String, kind: SourceKind) -> String {
         switch kind {
         case .audio, .recording: return speech(text)
         case .pdf: return pdf(text)
         default: return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-    }
-
-    /// Timestamps, filler words and polite particles out; Thai number words → digits.
-    static func speech(_ text: String) -> String {
-        let ns = text as NSString
-        let noTimes = timestamp.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length), withTemplate: "")
-        let converted = ThaiNumbers.convert(noTimes)
-        var lines: [String] = []
-        for line in converted.components(separatedBy: "\n") {
-            var tokens: [String] = []
-            for token in line.split(whereSeparator: \.isWhitespace).map(String.init) {
-                if fillerTokens.contains(token) { continue }
-                var t = token
-                for suffix in particleSuffixes where t.hasSuffix(suffix) {
-                    t = String(t.dropLast(suffix.count))
-                    break
-                }
-                if !t.isEmpty { tokens.append(t) }
-            }
-            if !tokens.isEmpty { lines.append(tokens.joined(separator: " ")) }
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    /// Drops page markers, page numbers and running headers/footers; re-joins hard-wrapped lines.
-    static func pdf(_ text: String) -> String {
-        let lines = text.components(separatedBy: "\n")
-        var counts: [String: Int] = [:]
-        for line in lines {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            if !t.isEmpty, t.count < 90 { counts[t, default: 0] += 1 }
-        }
-        var out: [String] = []
-        for line in lines {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            if (counts[t] ?? 0) >= 3 { continue }
-            if t.range(of: "^\\[Page \\d+\\]$", options: .regularExpression) != nil { continue }
-            if t.range(of: "^\\d{1,4}$", options: .regularExpression) != nil { continue }
-            if let last = out.last, !last.isEmpty, let first = t.first,
-               last.range(of: "[.!?:;]$", options: .regularExpression) == nil, first.isLowercase || first == "(" || first == "," {
-                out[out.count - 1] = last + " " + t
-            } else {
-                out.append(t)
-            }
-        }
-        var joined = out.joined(separator: "\n")
-        while joined.contains("\n\n\n") { joined = joined.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
-        return joined.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-enum LanguageDetector {
-    static func isThai(_ text: String) -> Bool {
-        var thai = 0
-        var letters = 0
-        for scalar in text.prefix(20_000).unicodeScalars where CharacterSet.letters.contains(scalar) {
-            letters += 1
-            if (0x0E00...0x0E7F).contains(scalar.value) { thai += 1 }
-        }
-        return letters > 0 && Double(thai) / Double(letters) > 0.3
-    }
-}
-
-// MARK: - Facts
-
-enum FactList {
-    struct Parsed {
-        var topic: String
-        var facts: [String]
-        var text: String { (topic.isEmpty ? "" : "TOPIC: \(topic)\n") + facts.joined(separator: "\n") }
-    }
-
-    /// Reads "TOPIC: …" + bullets; numbered / indented sub-points are kept as indented bullets.
-    static func parse(_ raw: String) -> Parsed {
-        var topic = ""
-        var facts: [String] = []
-        for line in raw.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-            if trimmed.uppercased().hasPrefix("TOPIC:") {
-                if topic.isEmpty { topic = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces) }
-                continue
-            }
-            let indented = line.prefix(while: { $0 == " " || $0 == "\t" }).count >= 1
-            var body = trimmed
-            if let range = body.range(of: "^(?:[-*•]|\\d+[.)])\\s*", options: .regularExpression) {
-                body.removeSubrange(range)
-            }
-            guard body.count >= 4 else { continue }
-            if "-*•".contains(trimmed.first!), !indented {
-                facts.append("- " + body)
-            } else if !facts.isEmpty {
-                facts.append("  - " + body)
-            } else {
-                facts.append("- " + body)
-            }
-        }
-        return Parsed(topic: topic, facts: facts)
-    }
-
-    static func key(_ line: String) -> String {
-        line.lowercased().filter { !$0.isWhitespace && !"-*>#=•".contains($0) }
-    }
-
-    static func trigrams(_ text: String) -> Set<String> {
-        let chars = Array(text.lowercased().filter { !$0.isWhitespace && !"*_=`>#-".contains($0) })
-        guard chars.count >= 3 else { return [] }
-        var grams = Set<String>()
-        for i in 0...(chars.count - 3) { grams.insert(String(chars[i..<i + 3])) }
-        return grams
-    }
-
-    /// A fact mostly contained in an earlier one (lectures recap themselves at the end).
-    static func isNearDuplicate(_ grams: Set<String>, of seen: [Set<String>], threshold: Double = 0.6) -> Bool {
-        guard grams.count >= 8 else { return false }
-        for other in seen {
-            let shared = grams.intersection(other).count
-            if shared > 0, Double(shared) / Double(min(grams.count, other.count)) >= threshold { return true }
-        }
-        return false
-    }
-
-    /// An evenly spread sample of the facts that fits the character budget.
-    static func sample(_ facts: [String], maxCharacters: Int) -> String {
-        let all = facts.joined(separator: "\n")
-        guard all.count > maxCharacters, !facts.isEmpty else { return all }
-        let average = Double(all.count) / Double(facts.count)
-        let keep = max(1, Int(Double(maxCharacters) / average))
-        let step = Double(facts.count) / Double(keep)
-        return (0..<keep).map { facts[min(facts.count - 1, Int(Double($0) * step))] }.joined(separator: "\n")
-    }
-}
-
-// MARK: - Sections
-
-enum SectionTools {
-    static func heading(of section: String) -> String {
-        for line in section.components(separatedBy: "\n") where line.hasPrefix("## ") {
-            return String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-        }
-        return String(section.components(separatedBy: "\n").first?.prefix(60) ?? "")
-    }
-
-    /// Makes sure a section starts with "## " and contains no "# " title.
-    static func normalize(_ section: String, topic: String) -> String {
-        var lines = section.components(separatedBy: "\n").map { line -> String in
-            line.hasPrefix("# ") ? "#" + line : line
-        }
-        while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeFirst() }
-        var text = lines.joined(separator: "\n")
-        if !text.hasPrefix("## ") {
-            text = "## \(topic.isEmpty ? "Notes" : topic)\n\n" + text
-        }
-        return text
-    }
-
-    /// Drops near-empty sections and merges a section into the previous one when they share a heading.
-    static func merge(_ sections: [String]) -> [String] {
-        var out: [String] = []
-        for raw in sections {
-            let section = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            if section.filter({ !$0.isWhitespace }).count < 40 { continue }
-            if let last = out.last, heading(of: last).lowercased() == heading(of: section).lowercased() {
-                let body = section.components(separatedBy: "\n").filter { !$0.hasPrefix("## ") }.joined(separator: "\n")
-                out[out.count - 1] = last + "\n\n" + body.trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
-                out.append(section)
-            }
-        }
-        return out
-    }
-
-    /// Headings + the first words of each section, for the opening writer.
-    static func outline(_ sections: [String], perSection: Int) -> String {
-        sections.map { section in
-            let lines = section.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            let head = lines.first { $0.hasPrefix("## ") } ?? "## (section)"
-            let body = lines
-                .filter { !$0.hasPrefix("#") && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("> [!") }
-                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "> ")).trimmingCharacters(in: .whitespaces) }
-                .joined(separator: " ")
-            return head + "\n" + String(body.prefix(perSection))
-        }.joined(separator: "\n\n")
-    }
-}
-
-/// Fixes the small format slips of a 3B model so callouts render properly.
-enum MarkdownFixer {
-    static func fix(_ text: String, thai: Bool) -> String {
-        var out: [String] = []
-        for var line in text.components(separatedBy: "\n") {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            // "* [!question] …", "- [!tip] …", "[!tip] …" → "> [!…] …"
-            if !t.hasPrefix("> [!"),
-               let match = t.range(of: "^(?:[*\\-•]\\s*|>?\\s*)\\[!(\\w+)\\]", options: .regularExpression) {
-                let marker = t[match]
-                let kind = marker.drop(while: { $0 != "!" }).dropFirst().prefix(while: { $0 != "]" })
-                let rest = t[match.upperBound...].trimmingCharacters(in: .whitespaces)
-                line = "> [!\(kind)] \(rest)".trimmingCharacters(in: .whitespaces)
-            }
-            let fixed = line.trimmingCharacters(in: .whitespaces)
-            if fixed.range(of: "^>\\s*\\[!summary\\]$", options: .regularExpression) != nil {
-                line = "> [!summary] " + (thai ? "ภาพรวม" : "Overview")
-            }
-            // An answer line right under a callout belongs inside it.
-            if fixed.range(of: "^\\*\\*(?:Answer|คำตอบ)\\s*[:：]\\*\\*", options: .regularExpression) != nil,
-               out.last?.trimmingCharacters(in: .whitespaces).hasPrefix(">") == true {
-                line = "> " + fixed
-            }
-            // "### ## Heading" → "## Heading"
-            if let range = line.range(of: "^#{2,}\\s+(?=#{2,}\\s)", options: .regularExpression) {
-                line.removeSubrange(range)
-            }
-            out.append(line)
-        }
-        var result = out.joined(separator: "\n")
-        // A blank line before every callout header so neighbouring callouts don't merge.
-        result = result.replacingOccurrences(of: "([^\\n])\\n(> \\[!)", with: "$1\n\n$2", options: .regularExpression)
-        while result.contains("\n\n\n") { result = result.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-enum TextChunker {
-    /// Splits on line boundaries (at a space for huge lines); a tiny last chunk is merged into the previous one.
-    static func split(_ text: String, maxCharacters: Int) -> [String] {
-        guard text.count > maxCharacters else { return [text] }
-        var chunks: [String] = []
-        var current = ""
-        for line in text.components(separatedBy: "\n") {
-            if !current.isEmpty, current.count + line.count + 1 > maxCharacters {
-                chunks.append(current)
-                current = ""
-            }
-            var rest = Substring(line)
-            while rest.count > maxCharacters {
-                let window = rest.prefix(maxCharacters)
-                let minimum = window.index(window.startIndex, offsetBy: Int(Double(maxCharacters) * 0.7))
-                let cut = window[minimum...].lastIndex(of: " ") ?? window.endIndex
-                chunks.append(String(rest[..<cut]))
-                rest = rest[cut...].drop(while: { $0 == " " })
-            }
-            current += (current.isEmpty ? "" : "\n") + rest
-        }
-        if !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { chunks.append(current) }
-        if chunks.count > 1, let last = chunks.last, Double(last.count) < Double(maxCharacters) * 0.3 {
-            chunks.removeLast()
-            chunks[chunks.count - 1] += "\n" + last
-        }
-        return chunks
-    }
-}
-
-enum NoteCleaner {
-    /// Small models sometimes wrap the note in ```markdown fences or add chatter — strip that.
-    static func clean(_ raw: String) -> String {
-        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("```") {
-            var lines = text.components(separatedBy: "\n")
-            lines.removeFirst()
-            if lines.last?.trimmingCharacters(in: .whitespaces).hasPrefix("```") == true { lines.removeLast() }
-            text = lines.joined(separator: "\n")
-        }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    static func title(from markdown: String, fallback: String) -> String {
-        for line in markdown.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("# ") {
-                return String(trimmed.dropFirst(2)).replacingOccurrences(of: "==", with: "")
-                    .replacingOccurrences(of: "**", with: "")
-            }
-        }
-        return fallback
     }
 }
