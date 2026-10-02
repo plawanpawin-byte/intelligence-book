@@ -58,6 +58,19 @@ jobs:
         with:
           name: out-${{ matrix.id }}
           path: tools/eval/out
+      - name: Publish this job's result right away
+        if: always()
+        run: |
+          git config --global user.name "eval-bot"
+          git config --global user.email "eval-bot@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            rm -rf res
+            git clone -q --depth 1 --branch eval-results "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" res || exit 0
+            mkdir -p "res/runs/${{ github.run_number }}"
+            cp tools/eval/out/* "res/runs/${{ github.run_number }}/" 2>/dev/null || true
+            (cd res && git add -A && git commit -qm "eval run ${{ github.run_number }} ${{ matrix.id }}" && git push -q origin eval-results) && break
+            sleep $((attempt * 7))
+          done
 
   publish:
     needs: run

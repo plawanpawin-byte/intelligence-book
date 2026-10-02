@@ -830,14 +830,20 @@ def run_v3(llm, sources, style="summary", language="auto", cfg=None, log=print, 
         chunks += split(t, chunk_chars)
     groups = []  # (topic, bullets)
     seen = set()
+    seen_grams = []
     for i, c in enumerate(chunks):
         topic, bullets = facts_of(c, f"facts {i+1}/{len(chunks)}")
         fresh = []
         for b in bullets:
             k = key(b)
-            if k and k not in seen:
-                seen.add(k)
-                fresh.append(b)
+            if not k or k in seen:
+                continue
+            if globals().get("_dedupe_mode") == "fuzzy":
+                if near_duplicate(b, seen_grams):
+                    continue
+                seen_grams.append(trigrams(b))
+            seen.add(k)
+            fresh.append(b)
         if fresh:
             groups.append((topic, fresh))
 
@@ -986,3 +992,68 @@ def run_v4(llm, sources, style="summary", language="auto", cfg=None, log=print):
     cfg = dict(cfg)
     note = run_v3(llm, sources, style, language, cfg, log, _texts=texts)
     return normalize_markdown(note, th)
+
+
+
+# ----------------------------------------------------------------------------- v5 = v4 + better fact parsing, fuzzy dedupe, smaller groups
+
+def split_facts_v5(text):
+    """Keeps sub-points (numbered / indented lines and short "ข้อ 1:" headers) as indented bullets."""
+    topic, bullets = "", []
+    for line in text.split("\n"):
+        raw = line.rstrip()
+        t = raw.strip()
+        if not t:
+            continue
+        if t.upper().startswith("TOPIC:"):
+            topic = topic or t[6:].strip()
+            continue
+        indented = len(raw) - len(raw.lstrip()) >= 1
+        body = re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", t)
+        if len(body) < 4:
+            continue
+        if t[0] in "-*•" and not indented:
+            bullets.append("- " + body)
+        elif bullets:
+            bullets.append("  - " + body)
+        else:
+            bullets.append("- " + body)
+    return topic, bullets
+
+
+def trigrams(text):
+    t = re.sub(r"[\s*_=`>#\-]", "", text.lower())
+    return {t[i:i + 3] for i in range(max(0, len(t) - 2))}
+
+
+def near_duplicate(a, seen_sets, threshold=0.6):
+    ga = trigrams(a)
+    if len(ga) < 8:
+        return False
+    for gb in seen_sets:
+        inter = len(ga & gb)
+        if inter and inter / min(len(ga), len(gb)) >= threshold:
+            return True
+    return False
+
+
+SPEECH_EXTRA = {"ใช่", "อ้าว", "เนี่ย", "เนาะ", "แหละ"}
+WRITE_RULE_V5 = (" Each fact appears ONCE — in a paragraph, a bullet or a callout, never repeated in another form. "
+                 "Prefer explanatory paragraphs that connect the facts (because…, so…, for example…) over bare bullet lists.")
+
+
+def run_v5(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    global split_facts, FILLER_TOKENS
+    cfg = dict(cfg or {})
+    cfg.setdefault("v3_group_chars", 1500)
+    old_split, old_write, old_fill = split_facts, v3_write_system, FILLER_TOKENS
+    split_facts = split_facts_v5
+    FILLER_TOKENS = FILLER_TOKENS | SPEECH_EXTRA
+    globals()["v3_write_system"] = lambda lang: old_write(lang) + WRITE_RULE_V5
+    globals()["_dedupe_mode"] = "fuzzy"
+    try:
+        return run_v4(llm, sources, style, language, cfg, log)
+    finally:
+        split_facts, FILLER_TOKENS = old_split, old_fill
+        globals()["v3_write_system"] = old_write
+        globals()["_dedupe_mode"] = "exact"
