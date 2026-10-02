@@ -77,9 +77,9 @@ enum DeviceProfile {
 
     static var processorCount: Int { ProcessInfo.processInfo.activeProcessorCount }
 
-    /// Llama 3.2 3B ("Apple Foundation Models 3B") on every iPhone. (Qwen3 1.7B was tried for 4 GB phones and
-    /// invented far more than 3B in the note evaluation, so it is not used.)
-    static let selected: LlamaVariant = .b3
+    /// Llama 3.2 3B ("Apple Foundation Models 3B") on 6 GB+ iPhones. On 4 GB iPhones (iPhone 13 and older)
+    /// iOS closes the app while the 3B model writes, so those run Llama 3.2 1B.
+    static var selected: LlamaVariant { isLowMemory ? .b1 : .b3 }
 
     /// 4 GB iPhones (iPhone 13 and older): the 3B model only just fits, so the pipeline uses less memory there.
     static var isLowMemory: Bool { ramGB < 5 }
