@@ -1,0 +1,25 @@
+run: 37044751817 sha: 84defed6beabbbf8a845caedd9c5bc1252f7f3c2
+
+1:tools/swiftcheck/main.swift:83:290: error: consecutive statements on a line must be separated by ';'
+5:   |                                                                                                                                                             `- error: consecutive statements on a line must be separated by ';'
+7:85 | print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
+9:tools/swiftcheck/main.swift:83:290: error: expected expression
+13:   |                                                                                                                                                             `- error: expected expression
+15:85 | print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
+
+----- tail -----
+tools/swiftcheck/main.swift:83:290: error: consecutive statements on a line must be separated by ';'
+81 | check("heading questions", MarkdownFixer.headingQuestions("## คำถามทบทวน\n\n### 1. อะไรคือผลทางการทดแทน\n## Other\n### 1. keep"),
+82 |       "## คำถามทบทวน\n\n> [!question] อะไรคือผลทางการทดแทน\n## Other\n### 1. keep")
+83 | check("hook", "\(SectionTools.hasHook("# T\n\n> [!summary] x\n> y")) \(SectionTools.hasHook("# T\n\nรู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5"))"), "false true")
+   |                                                                                                                                                             `- error: consecutive statements on a line must be separated by ';'
+84 | 
+85 | print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
+
+tools/swiftcheck/main.swift:83:290: error: expected expression
+81 | check("heading questions", MarkdownFixer.headingQuestions("## คำถามทบทวน\n\n### 1. อะไรคือผลทางการทดแทน\n## Other\n### 1. keep"),
+82 |       "## คำถามทบทวน\n\n> [!question] อะไรคือผลทางการทดแทน\n## Other\n### 1. keep")
+83 | check("hook", "\(SectionTools.hasHook("# T\n\n> [!summary] x\n> y")) \(SectionTools.hasHook("# T\n\nรู้ไหมว่าการระเบิดของภูเขาไฟลูกเดียวทำให้ทั้งโลกเย็นลงได้ราว 0.5"))"), "false true")
+   |                                                                                                                                                             `- error: expected expression
+84 | 
+85 | print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
