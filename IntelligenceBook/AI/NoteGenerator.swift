@@ -111,7 +111,8 @@ final class GenerationJob {
             }
             let grounded = Grounding.dropUngroundedNumbers(RepetitionGuard.clean(note), allowed: allowed)
             let fixed = MarkdownFixer.fix(MarkdownFixer.headingQuestions(MarkdownFixer.questionCallouts(grounded)), thai: thai)
-            output = Examples.dropLeakedLines(fixed, source: sourceLower)
+            let clean = Examples.dropLeakedLines(fixed, source: sourceLower)
+            output = thai ? MarkdownFixer.stripEnglishSentences(clean) : clean
             progress = 1
             phase = .done
         } catch is CancellationError {
@@ -332,7 +333,7 @@ struct NotePrompts {
     static let maxChunks = 40
 
     private var languageRule: String {
-        thai ? "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses." : "Write in English."
+        thai ? "Write in Thai (ภาษาไทย), keeping English technical terms in parentheses. Put English only for single technical terms in parentheses; never translate whole sentences." : "Write in English."
     }
 
     // Understand
@@ -453,7 +454,8 @@ struct NotePrompts {
 
 enum Examples {
     /// Words that only the worked examples use.
-    static let ownWords = ["ภูเขาไฟ", "ลาวา", "แมกมา", "ปินาตูโบ", "ฟูจิ", "ฮาวาย", "volcano", "lava", "magma", "pinatubo", "fuji", "hawaii"]
+    static let ownWords = ["ภูเขาไฟ", "ลาวา", "แมกมา", "ปินาตูโบ", "ฟูจิ", "ฮาวาย", "หนืด", "ปะทุ", "แก๊ส",
+                           "volcano", "lava", "magma", "pinatubo", "fuji", "hawaii", "viscous", "viscosity", "erupt", "ooze"]
 
     static func leakedWords(in text: String, source: String) -> [String] {
         let lower = text.lowercased()

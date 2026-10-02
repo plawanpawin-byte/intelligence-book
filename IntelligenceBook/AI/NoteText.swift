@@ -220,6 +220,24 @@ enum SectionTools {
 
 /// Fixes the small format slips of a 3B model so callouts render properly.
 enum MarkdownFixer {
+    /// In a Thai note, removes parentheses that hold an English sentence (5+ words) — the 3B model sometimes
+    /// "translates" every sentence and adds things on the way. Short terms like (hippocampus) stay.
+    static func stripEnglishSentences(_ text: String) -> String {
+        let regex = try! NSRegularExpression(pattern: "\\s*\\((?=[^()]*[A-Za-z])[^()\\u0E00-\\u0E7F]{0,400}\\)")
+        let ns = text as NSString
+        var result = ""
+        var last = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let inner = ns.substring(with: match.range)
+            let words = inner.split(whereSeparator: { !$0.isLetter || !$0.isASCII }).count
+            result += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+            if words < 5 { result += inner }
+            last = match.range.location + match.range.length
+        }
+        result += ns.substring(from: last)
+        return result.replacingOccurrences(of: "\\*\\*\\s*\\*\\*", with: "", options: .regularExpression)
+    }
+
     /// Inside the review-questions section, numbered "### 1. Question" headings become question callouts.
     static func headingQuestions(_ text: String) -> String {
         var inReview = false

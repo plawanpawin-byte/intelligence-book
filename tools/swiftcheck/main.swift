@@ -95,5 +95,9 @@ let inventedSmall = Grounding.isUngrounded("ดื่มก่อนนอน 2 
 let realSmall = Grounding.isUngrounded("นอน 8 ชั่วโมง ประมาณ 5 รอบ และขั้นที่ 1", allowed: smallAllowed)
 check("small grounding", "\(inventedSmall) \(realSmall)", "true false")
 
+check("english sentences",
+      MarkdownFixer.stripEnglishSentences("ควรนอน 7 ถึง 9 ชั่วโมง **(Adults need 7-9 hours and teenagers need 8-10 hours of sleep per night)**. ok **ฮิปโปแคมปัส (hippocampus)** (memory consolidation)"),
+      "ควรนอน 7 ถึง 9 ชั่วโมง . ok **ฮิปโปแคมปัส (hippocampus)** (memory consolidation)")
+
 print(failed == 0 ? "Self-check: all tests pass" : "Self-check: \(failed) failures")
 exit(failed == 0 ? 0 : 1)
