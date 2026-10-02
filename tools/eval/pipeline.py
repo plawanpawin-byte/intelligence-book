@@ -938,7 +938,7 @@ def normalize_markdown(text, th):
     for i, line in enumerate(lines):
         t = line.strip()
         # "* [!question] …" / "- [!question] …" / "[!tip] …" → "> [!question] …"
-        m = re.match(r"^(?:[*\-•]\s*|>?\s*)\[!(\w+)\]\s*(.*)$", t)
+        m = re.match(r"^(?:[*\-•]\s*|#{1,6}\s*|>?\s*)\[!(\w+)\]\s*(.*)$", t)
         if m and not t.startswith("> [!"):
             line = f"> [!{m.group(1)}] {m.group(2)}".rstrip()
             t = line
@@ -1057,3 +1057,99 @@ def run_v5(llm, sources, style="summary", language="auto", cfg=None, log=print):
         split_facts, FILLER_TOKENS = old_split, old_fill
         globals()["v3_write_system"] = old_write
         globals()["_dedupe_mode"] = "exact"
+
+
+
+# ----------------------------------------------------------------------------- v6 = v5 + example-leak guard + number grounding
+
+def leak_ratio(out, example, n=12):
+    a = re.sub(r"\s+", "", out)
+    b = re.sub(r"\s+", "", example)
+    ga = {a[i:i + n] for i in range(0, max(0, len(a) - n + 1), 2)}
+    gb = {b[i:i + n] for i in range(0, max(0, len(b) - n + 1))}
+    return len(ga & gb) / max(1, len(ga))
+
+
+NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def numbers_in(text):
+    out = set()
+    for m in NUM.finditer(text):
+        v = m.group(0).replace(",", "").rstrip(".")
+        out.add(v)
+        if "." in v:
+            out.add(v.rstrip("0").rstrip("."))
+    return out
+
+
+def ungrounded(line, allowed):
+    for v in numbers_in(line):
+        try:
+            if float(v) <= 10:
+                continue
+        except ValueError:
+            continue
+        if v not in allowed:
+            return True
+    return False
+
+
+def ground_numbers(note, allowed):
+    """Removes paragraphs, bullets, table rows and whole callouts that state a number (> 10) not in the source."""
+    lines = note.split("\n")
+    out, i = [], 0
+    while i < len(lines):
+        line = lines[i]
+        t = line.strip()
+        if t.startswith("> [!"):
+            block = [line]
+            j = i + 1
+            while j < len(lines) and lines[j].strip().startswith(">"):
+                block.append(lines[j])
+                j += 1
+            body = "\n".join(block[1:])
+            if not ungrounded(body, allowed) and not ungrounded(block[0], allowed):
+                out.extend(block)
+            i = j
+            continue
+        if t.startswith("#") or not ungrounded(t, allowed):
+            out.append(line)
+        i += 1
+    text = "\n".join(out)
+    # a table left with only its header → drop it
+    text = re.sub(r"(?m)^\|[^\n]*\|\n\|[-| :]+\|\n(?!\|)", "", text)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def run_v6(llm, sources, style="summary", language="auto", cfg=None, log=print):
+    orig_chat = llm.chat
+    examples = [EX_TH_SECTION, EX_EN_SECTION, EX_TH_FACTS, EX_EN_FACTS]
+
+    def guarded_chat(system, user, max_tokens, **kw):
+        out, cut = orig_chat(system, user, max_tokens, **kw)
+        hist = kw.get("history") or ()
+        if hist:
+            ex_answer = hist[0][1]
+            r = leak_ratio(out, ex_answer)
+            if r > 0.2:
+                kw2 = dict(kw)
+                kw2["history"] = ()
+                kw2["label"] = kw.get("label", "") + " (retry: example leak %.2f)" % r
+                out, cut = orig_chat(system, user, max_tokens, **kw2)
+        return out, cut
+
+    llm.chat = guarded_chat
+    try:
+        note = run_v5(llm, sources, style, language, cfg, log)
+    finally:
+        llm.chat = orig_chat
+    allowed = set()
+    for s_ in sources:
+        t = s_["text"]
+        if s_["kind"] in ("audio", "recording"):
+            t = preclean_speech(t)
+        allowed |= numbers_in(t)
+    note = ground_numbers(note, allowed)
+    th = is_thai(note)
+    return normalize_markdown(note, th)

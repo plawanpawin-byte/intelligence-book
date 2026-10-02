@@ -7,34 +7,34 @@
  },
  "jobs": [
   {
-   "id": "econ-v5",
+   "id": "econ-v6",
    "case": "th_lecture_econ",
-   "pipeline": "v5"
+   "pipeline": "v6"
   },
   {
-   "id": "short-v5",
+   "id": "short-v6",
    "case": "th_short_recording",
-   "pipeline": "v5"
+   "pipeline": "v6"
   },
   {
-   "id": "talk-v5",
+   "id": "talk-v6",
    "case": "th_talk_medium",
-   "pipeline": "v5"
+   "pipeline": "v6"
   },
   {
-   "id": "article-v5",
+   "id": "article-v6",
    "case": "th_article",
-   "pipeline": "v5"
+   "pipeline": "v6"
   },
   {
-   "id": "paper-v5",
+   "id": "paper-v6",
    "case": "en_paper",
-   "pipeline": "v5"
+   "pipeline": "v6"
   },
   {
-   "id": "bio-v5",
+   "id": "bio-v6",
    "case": "th_lecture_bio_long",
-   "pipeline": "v5"
+   "pipeline": "v6"
   }
  ]
 }
